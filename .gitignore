@@ -1,0 +1,21 @@
+# Backup folders
+backup/
+old/
+archive/
+
+# Dependencies
+node_modules/
+__pycache__/
+*.pyc
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# IDE
+.vscode/
+.idea/
+
+# Environment files
+.env
+*.log

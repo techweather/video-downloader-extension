@@ -1,0 +1,23 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(python3:*)",
+      "Bash(mkdir:*)",
+      "Bash(python:*)",
+      "Bash(node:*)",
+      "Bash(pyinstaller:*)",
+      "Bash(source:*)",
+      "Bash(pip install:*)",
+      "Bash(chmod:*)",
+      "Bash(./build_extension.sh:*)",
+      "Bash(ffmpeg:*)",
+      "Read(//opt/homebrew/Cellar/ffmpeg/7.1.1_2/bin/**)",
+      "Bash(\"dist/Media Downloader/_internal/ffmpeg\" -version)",
+      "Bash(\"dist/Media Downloader/_internal/ffprobe\" -version)",
+      "Bash(pipx install:*)",
+      "Bash(zip:*)",
+      "Bash(unzip:*)"
+    ],
+    "deny": []
+  }
+}
