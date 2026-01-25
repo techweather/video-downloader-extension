@@ -19,3 +19,8 @@ Thumbs.db
 # Environment files
 .env
 *.log
+
+# Build artifacts
+build/
+dist/
+*.pkg
