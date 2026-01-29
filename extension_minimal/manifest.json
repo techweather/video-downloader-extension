@@ -17,5 +17,28 @@
     "16": "icon-16.png",
     "48": "icon-48.png",
     "128": "icon-128.png"
+  },
+  "commands": {
+    "pick-images": {
+      "suggested_key": {
+        "default": "Ctrl+F1",
+        "mac": "Command+F1"
+      },
+      "description": "Pick images"
+    },
+    "download-video": {
+      "suggested_key": {
+        "default": "Ctrl+F2",
+        "mac": "Command+F2"
+      },
+      "description": "Download media"
+    },
+    "scrape-videos": {
+      "suggested_key": {
+        "default": "Ctrl+F3",
+        "mac": "Command+F3"
+      },
+      "description": "Extract direct videos"
+    }
   }
 }

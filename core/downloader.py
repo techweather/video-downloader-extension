@@ -15,6 +15,42 @@ import yt_dlp
 from .encoder import VideoEncoder, needs_encoding_check
 from .metadata import embed_image_metadata, embed_video_metadata
 
+class YtDlpLogger:
+    """Custom logger to capture yt-dlp messages, including skip notifications."""
+
+    def __init__(self):
+        self.skipped = False
+        self.skip_reason = None
+        self.skipped_filename = None
+
+    def debug(self, msg):
+        # Capture "already downloaded" messages
+        if 'has already been downloaded' in msg.lower():
+            print(f"[DEBUG] YtDlpLogger captured skip message: {msg}")
+            self.skipped = True
+            self.skip_reason = msg
+            # Try to extract filename from message
+            # Format is typically: "[download] filename has already been downloaded"
+            if msg.startswith('[download]'):
+                parts = msg.split(' has already been downloaded')
+                if parts:
+                    self.skipped_filename = parts[0].replace('[download]', '').strip()
+                    print(f"[DEBUG] YtDlpLogger extracted filename: {self.skipped_filename}")
+
+    def warning(self, msg):
+        pass
+
+    def error(self, msg):
+        pass
+
+    def reset(self):
+        """Reset state for a new download."""
+        print(f"[DEBUG] YtDlpLogger.reset() called - clearing skip state (was skipped={self.skipped})")
+        self.skipped = False
+        self.skip_reason = None
+        self.skipped_filename = None
+
+
 class DownloadWorker(QThread):
     progress_update = pyqtSignal(str, int, str)  # id, percent, status
     download_complete = pyqtSignal(str, str)  # id, path
@@ -22,6 +58,7 @@ class DownloadWorker(QThread):
     download_cancelled = pyqtSignal(str)  # id
     status_update = pyqtSignal(str, str)  # id, status
     playlist_detected = pyqtSignal(str, dict)  # download_id, playlist_data
+    download_skipped = pyqtSignal(str, str, str)  # download_id, reason, filepath
     
     def __init__(self, download_queue):
         super().__init__()
@@ -33,6 +70,7 @@ class DownloadWorker(QThread):
         self.encoder = VideoEncoder()
         self.partial_files = set()  # Track partial files for cleanup
         self.has_emitted_downloading_status = False  # Track if we've sent downloading status
+        self.ytdlp_logger = YtDlpLogger()  # Logger to capture skip messages
     
     def cancel_download(self, download_id):
         """Cancel a download"""
@@ -131,7 +169,11 @@ class DownloadWorker(QThread):
         if self.current_download_id in self.cancelled_downloads:
             print(f"[DEBUG] Cancellation detected in progress hook for {self.current_download_id}")
             raise Exception("Download cancelled by user")
-            
+
+        # Log progress hook calls to help debug skip issues
+        if d['status'] == 'finished':
+            print(f"[DEBUG] Progress hook: status=finished for download_id={self.current_download_id}")
+
         if d['status'] == 'downloading':
             # Emit 'downloading' status on first actual progress
             if not self.has_emitted_downloading_status:
@@ -433,8 +475,11 @@ class DownloadWorker(QThread):
             if download is None:
                 break
             
-            print(f"[DEBUG] Processing download from queue: type={download.get('type')}, url={download.get('url', '')[:50]}...")
-                
+            print(f"[DEBUG] ===== NEW DOWNLOAD FROM QUEUE =====")
+            print(f"[DEBUG] Download ID: {download['id']}")
+            print(f"[DEBUG] Type: {download.get('type')}")
+            print(f"[DEBUG] URL: {download.get('url', '')[:80]}...")
+
             self.current_download_id = download['id']
             self.current_download_info = download  # Store for encoding options
             self.has_emitted_downloading_status = False  # Reset for new download
@@ -641,10 +686,14 @@ class DownloadWorker(QThread):
                         # Specific resolution (numeric)
                         format_str = f'bestvideo[height<={quality}]+bestaudio/best[height<={quality}]'
                     
+                    # Reset logger for this download
+                    self.ytdlp_logger.reset()
+
                     # Base yt-dlp options
                     ydl_opts = {
                         'format': format_str,
                         'progress_hooks': [self.progress_hook],
+                        'logger': self.ytdlp_logger,  # Custom logger to capture skip messages
                         'quiet': True,
                         'no_warnings': True,
                         'overwrites': False,
@@ -1073,8 +1122,8 @@ class DownloadWorker(QThread):
                                             downloaded_files.append(path)
                                             break
                             
-                            # For Instagram carousels with metadata enabled, move stray metadata files
-                            if save_metadata and 'instagram.com' in download['url']:
+                            # For Instagram carousels with sidecar metadata, move stray metadata files
+                            if metadata_option == 'sidecar' and 'instagram.com' in download['url']:
                                 metadata_path = Path(save_path) / '_metadata'
                                 
                                 # Look for stray metadata files in the video folder
@@ -1100,8 +1149,19 @@ class DownloadWorker(QThread):
                                     self.partial_files.discard(file)
                                 # For multiple files, use the first one as reference
                                 final_path = downloaded_files[0]
+                                # Check if ALL files were skipped (playlist skip detection)
+                                if self.ytdlp_logger.skipped:
+                                    print(f"[DEBUG] ===== PLAYLIST SKIP DETECTED =====")
+                                    print(f"[DEBUG] Download ID: {self.current_download_id}")
+                                    print(f"[DEBUG] Files found: {len(downloaded_files)}")
+                                    skip_reason = f"Files already exist ({len(downloaded_files)} files)"
+                                    self.download_skipped.emit(self.current_download_id, skip_reason, final_path)
+                                    continue
+                                print(f"[DEBUG] ===== EMITTING DOWNLOAD_COMPLETE (PLAYLIST) =====")
+                                print(f"[DEBUG] Download ID: {self.current_download_id}")
+                                print(f"[DEBUG] Files: {len(downloaded_files)}")
                                 self.download_complete.emit(
-                                    self.current_download_id, 
+                                    self.current_download_id,
                                     f"{final_path}|MULTI|{len(downloaded_files)} files"
                                 )
                             else:
@@ -1140,8 +1200,25 @@ Possible Causes:
                             if final_path and self.current_download_id not in self.cancelled_downloads:
                                 # Remove from partial files once we have final path
                                 self.partial_files.discard(final_path)
-                                
+
+                                # Check if file was skipped (already exists)
+                                if self.ytdlp_logger.skipped:
+                                    print(f"[DEBUG] ===== SKIP DETECTED =====")
+                                    print(f"[DEBUG] Download ID: {self.current_download_id}")
+                                    print(f"[DEBUG] Download URL: {download.get('url', 'Unknown')}")
+                                    print(f"[DEBUG] File path: {final_path}")
+                                    print(f"[DEBUG] Logger skip_reason: {self.ytdlp_logger.skip_reason}")
+                                    print(f"[DEBUG] Logger skipped_filename: {self.ytdlp_logger.skipped_filename}")
+                                    skip_reason = f"File already exists: {os.path.basename(final_path)}"
+                                    print(f"[DEBUG] Emitting download_skipped signal for ID: {self.current_download_id}")
+                                    self.download_skipped.emit(self.current_download_id, skip_reason, final_path)
+                                    print(f"[DEBUG] Signal emitted, now calling continue...")
+                                    continue  # Move to next download in queue
+
                                 # Check if we need to encode
+                                # NOTE: If we reach here, skip was NOT detected (continue would have skipped this)
+                                print(f"[DEBUG] ===== PROCEEDING TO ENCODE/COMPLETE (skip was False) =====")
+                                print(f"[DEBUG] Download ID: {self.current_download_id}")
                                 print(f"[DEBUG] yt-dlp single video download complete: {final_path}")
                                 print(f"[DEBUG] Download type: yt-dlp single video")
                                 print(f"[DEBUG] encode_vp9 setting: {download.get('encode_vp9', True)}")
@@ -1200,6 +1277,10 @@ Possible Causes:
                                     print(f"[DEBUG] ✗ Skipping encoding for yt-dlp video: needs_encoding={needs_encoding}, encode_vp9={encode_setting}")
                                     # Embed metadata if requested
                                     self.embed_video_metadata_if_requested(final_path, download.get('metadata_option'), info, download.get('url'))
+                                    print(f"[DEBUG] ===== EMITTING DOWNLOAD_COMPLETE =====")
+                                    print(f"[DEBUG] Download ID: {self.current_download_id}")
+                                    print(f"[DEBUG] Path: {final_path}")
+                                    print(f"[DEBUG] Logger skipped state: {self.ytdlp_logger.skipped}")
                                     self.download_complete.emit(self.current_download_id, final_path)
                             else:
                                 if self.current_download_id in self.cancelled_downloads:

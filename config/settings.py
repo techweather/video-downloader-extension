@@ -25,7 +25,7 @@ class Settings:
             'encode_vp9': True,
             'keep_original': False,
             'organize_by_platform': True,
-            'save_metadata': False,
+            'metadata_option': 'none',
             'window_geometry': {
                 'x': None,  # Will be set to top-right corner by default
                 'y': None,

@@ -5,10 +5,12 @@ Dialog for selecting which videos to download from a scraped page
 
 import re
 
-from PyQt5.QtWidgets import (QDialog, QVBoxLayout, QHBoxLayout, QLabel, 
+from PyQt5.QtWidgets import (QDialog, QVBoxLayout, QHBoxLayout, QLabel,
                            QListWidget, QListWidgetItem, QWidget, QCheckBox,
                            QPushButton, QDialogButtonBox)
 from PyQt5.QtCore import Qt, QTimer
+
+from ui.window_utils import bring_dialog_to_front
 
 
 class VideoSelectorDialog(QDialog):
@@ -91,7 +93,13 @@ class VideoSelectorDialog(QDialog):
         self.setLayout(layout)
         
         # Checkboxes are now set to checked during creation, no delay needed
-    
+
+    def showEvent(self, event):
+        """Handle show event to bring dialog to front"""
+        super().showEvent(event)
+        # Bring dialog and parent window to front on macOS and other platforms
+        bring_dialog_to_front(self, self.parent())
+
     def _create_video_item(self, index, video):
         """
         Create a single video item widget.

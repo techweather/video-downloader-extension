@@ -21,6 +21,7 @@ from config.settings import Settings
 from core.downloader import DownloadWorker
 from ui.components.download_item import DownloadItem
 from ui.components.video_selector import VideoSelectorDialog
+from ui.window_utils import bring_window_to_front
 
 
 class MainWindow(QMainWindow):
@@ -49,6 +50,7 @@ class MainWindow(QMainWindow):
         self.download_queue = download_queue
         self.download_items = {}
         self.settings = Settings.load()
+        self._first_download_received = False  # Track first download for bring-to-front
         
         # Initialize UI components
         self.init_ui()
@@ -469,6 +471,7 @@ class MainWindow(QMainWindow):
         self.worker.download_cancelled.connect(self.download_cancelled)
         self.worker.status_update.connect(self.update_status)
         self.worker.playlist_detected.connect(self.handle_playlist_detected)
+        self.worker.download_skipped.connect(self.download_skipped_handler)
         self.worker.start()
     
     def init_tray(self):
@@ -518,10 +521,15 @@ class MainWindow(QMainWindow):
     def add_download(self, data):
         """
         Add a new download to the queue.
-        
+
         Args:
             data: Dictionary containing download information
         """
+        # Bring window to front on first download of the session
+        if not self._first_download_received:
+            self._first_download_received = True
+            bring_window_to_front(self)
+
         download_id = datetime.now().strftime("%Y%m%d_%H%M%S_%f")
         
         # Determine title based on download type
@@ -611,10 +619,13 @@ class MainWindow(QMainWindow):
     def handle_video_list(self, data):
         """
         Handle a list of videos from page scraping.
-        
+
         Args:
             data: Dictionary containing video list and page metadata
         """
+        # Mark first download received (dialog's showEvent handles bring-to-front)
+        self._first_download_received = True
+
         print(f"[DEBUG] handle_video_list called with: {data}")
         print(f"[DEBUG] handle_video_list called with {len(data.get('videos', []))} videos")
         
@@ -705,11 +716,15 @@ class MainWindow(QMainWindow):
     def handle_playlist_detected(self, download_id, playlist_data):
         """
         Handle playlist detected by yt-dlp during download.
-        
+
         Args:
             download_id: ID of the original download that detected a playlist
             playlist_data: Dictionary containing playlist videos and metadata
         """
+        # Mark first download received (dialog's showEvent handles bring-to-front)
+        # Note: This is usually already set, but handles edge cases
+        self._first_download_received = True
+
         print(f"[DEBUG] handle_playlist_detected called for download {download_id}")
         print(f"[DEBUG] Playlist data: {len(playlist_data.get('videos', []))} videos")
         
@@ -816,10 +831,15 @@ class MainWindow(QMainWindow):
     def add_direct_video_download(self, data):
         """
         Add a direct video download (MP4 from webpage).
-        
+
         Args:
             data: Dictionary containing direct video download information
         """
+        # Bring window to front on first download of the session
+        if not self._first_download_received:
+            self._first_download_received = True
+            bring_window_to_front(self)
+
         download_id = datetime.now().strftime("%Y%m%d_%H%M%S_%f")
         
         # Create download item
@@ -921,6 +941,9 @@ class MainWindow(QMainWindow):
     
     def download_finished(self, download_id, path):
         """Handle download completion"""
+        print(f"[DEBUG] ===== DOWNLOAD FINISHED CALLED =====")
+        print(f"[DEBUG] Download ID: {download_id}")
+        print(f"[DEBUG] Path: {path}")
         if download_id in self.download_items:
             widget = self.download_items[download_id]['widget']
             widget.progress_bar.setValue(100)
@@ -1003,6 +1026,9 @@ class MainWindow(QMainWindow):
     
     def download_failed(self, download_id, error):
         """Handle download failure"""
+        # Bring window to front so user sees the error
+        bring_window_to_front(self)
+
         if download_id in self.download_items:
             widget = self.download_items[download_id]['widget']
             widget.progress_bar.setValue(0)
@@ -1023,7 +1049,7 @@ class MainWindow(QMainWindow):
             widget.status_label.setText("Cancelled")
             widget.status_label.setStyleSheet("color: #6c757d;")
             widget.cancel_btn.setEnabled(False)
-            
+
             # Show cancellation notification
             self.tray_icon.showMessage(
                 "Download Cancelled",
@@ -1031,15 +1057,48 @@ class MainWindow(QMainWindow):
                 QSystemTrayIcon.Information,
                 2000
             )
-        
+
         self.status_label.setText(f"Active downloads: {self.count_active()}")
-    
+
+    def download_skipped_handler(self, download_id, reason, filepath):
+        """Handle skipped download (file already exists)"""
+        print(f"[DEBUG] ===== SKIP HANDLER CALLED =====")
+        print(f"[DEBUG] Received download_id: {download_id}")
+        print(f"[DEBUG] Reason: {reason}")
+        print(f"[DEBUG] Filepath: {filepath}")
+        print(f"[DEBUG] Known download_items: {list(self.download_items.keys())}")
+
+        if download_id in self.download_items:
+            widget = self.download_items[download_id]['widget']
+            widget.progress_bar.setValue(100)
+            widget.status_label.setText(f"Skipped - {reason}")
+            widget.status_label.setStyleSheet("color: #f39c12;")  # Orange/amber color
+            widget.cancel_btn.setEnabled(False)
+
+            # Add reveal button to show existing file
+            reveal_btn = self._create_reveal_button("Show in Finder",
+                                                   lambda: self.reveal_in_finder(filepath))
+            widget.layout().addWidget(reveal_btn)
+        else:
+            print(f"[DEBUG] WARNING: download_id {download_id} not found in download_items!")
+
+        # Show notification (always, even if item not found in UI)
+        print(f"[DEBUG] Showing skip notification for: {reason}")
+        self.tray_icon.showMessage(
+            "Download Skipped",
+            reason,
+            QSystemTrayIcon.Information,
+            2000
+        )
+
+        self.status_label.setText(f"Active downloads: {self.count_active()}")
+
     def clear_completed(self):
-        """Clear completed and failed downloads from the list"""
+        """Clear completed, failed, and skipped downloads from the list"""
         to_remove = []
         for download_id, item_data in self.download_items.items():
             status = item_data['widget'].status_label.text()
-            if status.startswith("Complete") or status.startswith("Failed"):
+            if status.startswith("Complete") or status.startswith("Failed") or status.startswith("Skipped"):
                 to_remove.append(download_id)
         
         # Remove items from UI and storage
@@ -1050,15 +1109,16 @@ class MainWindow(QMainWindow):
     
     def count_active(self):
         """
-        Count active downloads (not complete, failed, or cancelled).
-        
+        Count active downloads (not complete, failed, cancelled, or skipped).
+
         Returns:
             int: Number of active downloads
         """
         count = 0
         for item_data in self.download_items.values():
             status = item_data['widget'].status_label.text()
-            if not (status.startswith("Complete") or status.startswith("Failed") or status.startswith("Cancel")):
+            if not (status.startswith("Complete") or status.startswith("Failed") or
+                    status.startswith("Cancel") or status.startswith("Skipped")):
                 count += 1
         return count
     
