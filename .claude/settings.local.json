@@ -16,7 +16,14 @@
       "Bash(\"dist/Media Downloader/_internal/ffprobe\" -version)",
       "Bash(pipx install:*)",
       "Bash(zip:*)",
-      "Bash(unzip:*)"
+      "Bash(unzip:*)",
+      "Bash(git add:*)",
+      "Bash(git commit -m \"$\\(cat <<''EOF''\nQuick wins complete: bring-to-front, skip feedback, keyboard shortcuts, remove Vimeo menu item, fix save_metadata bug\n\nCo-Authored-By: Claude Opus 4.5 <noreply@anthropic.com>\nEOF\n\\)\")",
+      "WebSearch",
+      "WebFetch(domain:github.com)",
+      "WebFetch(domain:raw.githubusercontent.com)",
+      "Bash(pip show:*)",
+      "Bash(git commit -m \"$\\(cat <<''EOF''\nProgress bar fix, parallel encoding, Instagram carousel metadata fix, avoid audio description tracks\n\nCo-Authored-By: Claude Opus 4.5 <noreply@anthropic.com>\nEOF\n\\)\")"
     ],
     "deny": []
   }

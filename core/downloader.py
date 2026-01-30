@@ -59,6 +59,8 @@ class DownloadWorker(QThread):
     status_update = pyqtSignal(str, str)  # id, status
     playlist_detected = pyqtSignal(str, dict)  # download_id, playlist_data
     download_skipped = pyqtSignal(str, str, str)  # download_id, reason, filepath
+    # Signal to request encoding in separate worker (download_id, filepath, keep_original, metadata_info)
+    encoding_needed = pyqtSignal(str, str, bool, dict)
     
     def __init__(self, download_queue):
         super().__init__()
@@ -71,6 +73,7 @@ class DownloadWorker(QThread):
         self.partial_files = set()  # Track partial files for cleanup
         self.has_emitted_downloading_status = False  # Track if we've sent downloading status
         self.ytdlp_logger = YtDlpLogger()  # Logger to capture skip messages
+        self.final_filepath = None  # Track final filepath after postprocessing (merging)
     
     def cancel_download(self, download_id):
         """Cancel a download"""
@@ -179,17 +182,26 @@ class DownloadWorker(QThread):
             if not self.has_emitted_downloading_status:
                 self.status_update.emit(self.current_download_id, 'downloading')
                 self.has_emitted_downloading_status = True
-            
+
             percent = 0
             if d.get('total_bytes'):
                 percent = int(d['downloaded_bytes'] / d['total_bytes'] * 100)
             elif d.get('total_bytes_estimate'):
                 percent = int(d['downloaded_bytes'] / d['total_bytes_estimate'] * 100)
-            
+
+            # Detect if downloading video or audio stream
+            stream_type = self._detect_stream_type(d)
+            if stream_type == 'video':
+                status_text = f"Downloading video... {percent}%"
+            elif stream_type == 'audio':
+                status_text = f"Downloading audio... {percent}%"
+            else:
+                status_text = f"Downloading... {percent}%"
+
             self.progress_update.emit(
                 self.current_download_id,
                 percent,
-                f"Downloading... {percent}%"
+                status_text
             )
         elif d['status'] == 'finished':
             self.progress_update.emit(
@@ -197,6 +209,103 @@ class DownloadWorker(QThread):
                 100,
                 "Processing..."
             )
+
+    def _detect_stream_type(self, d):
+        """
+        Detect if the current download is a video or audio stream.
+
+        Args:
+            d: Progress hook dictionary from yt-dlp
+
+        Returns:
+            str: 'video', 'audio', or 'unknown'
+        """
+        # Method 1: Check info_dict for codec information
+        info_dict = d.get('info_dict', {})
+        vcodec = info_dict.get('vcodec', '')
+        acodec = info_dict.get('acodec', '')
+
+        # If vcodec is 'none', it's audio-only; if acodec is 'none', it's video-only
+        if vcodec == 'none' and acodec and acodec != 'none':
+            return 'audio'
+        if acodec == 'none' and vcodec and vcodec != 'none':
+            return 'video'
+
+        # Method 2: Check filename for format indicators
+        filename = d.get('filename', '').lower()
+
+        # Common audio-only extensions and format IDs
+        audio_indicators = ['.m4a', '.mp3', '.aac', '.opus', '.ogg', '.wav', '.flac',
+                          '.f140.', '.f139.', '.f141.', '.f251.', '.f250.', '.f249.']
+        # Common video format IDs (no audio)
+        video_indicators = ['.f137.', '.f136.', '.f135.', '.f134.', '.f133.',
+                          '.f299.', '.f298.', '.f303.', '.f302.', '.f308.',
+                          '.f315.', '.f313.', '.f271.', '.f313.', '.f401.',
+                          '.f400.', '.f399.', '.f398.']
+
+        for indicator in audio_indicators:
+            if indicator in filename:
+                return 'audio'
+
+        for indicator in video_indicators:
+            if indicator in filename:
+                return 'video'
+
+        # Method 3: Check if it's a combined format (has both video and audio)
+        if vcodec and vcodec != 'none' and acodec and acodec != 'none':
+            return 'unknown'  # Combined stream, use generic status
+
+        return 'unknown'
+
+    def postprocessor_hook(self, d):
+        """
+        Hook for yt-dlp postprocessor events (merging, converting, etc.)
+
+        Args:
+            d: Postprocessor hook dictionary with 'status', 'postprocessor', and 'info_dict' keys
+        """
+        # Check if cancelled
+        if self.current_download_id in self.cancelled_downloads:
+            return
+
+        status = d.get('status')
+        postprocessor = d.get('postprocessor', '')
+        info_dict = d.get('info_dict', {})
+
+        # Comprehensive debug logging
+        print(f"[DEBUG] ===== POSTPROCESSOR HOOK CALLED =====")
+        print(f"[DEBUG]   status: {status}")
+        print(f"[DEBUG]   postprocessor: {postprocessor}")
+        print(f"[DEBUG]   d keys: {list(d.keys())}")
+        print(f"[DEBUG]   info_dict keys: {list(info_dict.keys())[:20]}...")  # First 20 keys
+        print(f"[DEBUG]   filepath: {info_dict.get('filepath')}")
+        print(f"[DEBUG]   filename: {info_dict.get('filename')}")
+        print(f"[DEBUG]   _filename: {info_dict.get('_filename')}")
+        print(f"[DEBUG]   ext: {info_dict.get('ext')}")
+        print(f"[DEBUG]   requested_downloads: {info_dict.get('requested_downloads')}")
+
+        if status == 'started':
+            # Detect what kind of postprocessing is happening
+            pp_lower = postprocessor.lower()
+            if 'merger' in pp_lower or 'ffmpeg' in pp_lower:
+                self.status_update.emit(self.current_download_id, 'merging')
+            elif 'embed' in pp_lower:
+                self.status_update.emit(self.current_download_id, 'embedding metadata...')
+        elif status == 'finished':
+            # Capture the final filepath after postprocessing
+            # This is especially important after merging, as the output format may differ
+            filepath = info_dict.get('filepath')
+            if filepath:
+                print(f"[DEBUG] ✓ Postprocessor finished, capturing filepath: {filepath}")
+                self.final_filepath = filepath
+            else:
+                # Try alternative keys
+                alt_filepath = info_dict.get('_filename') or info_dict.get('filename')
+                if alt_filepath:
+                    print(f"[DEBUG] ✓ Using alternative filepath key: {alt_filepath}")
+                    self.final_filepath = alt_filepath
+                else:
+                    print(f"[DEBUG] ✗ No filepath found in postprocessor hook!")
     
     def download_image(self, url, download_id, save_path, organize_by_platform, referrer=None):
         """Download an image file"""
@@ -483,6 +592,7 @@ class DownloadWorker(QThread):
             self.current_download_id = download['id']
             self.current_download_info = download  # Store for encoding options
             self.has_emitted_downloading_status = False  # Reset for new download
+            self.final_filepath = None  # Reset for new download
             
             # Check if already cancelled
             if self.current_download_id in self.cancelled_downloads:
@@ -605,31 +715,17 @@ class DownloadWorker(QThread):
                         print(f"[DEBUG] Direct-video encoding decision: needs_encoding={needs_encoding}, encode_vp9={encode_setting}")
                         
                         if needs_encoding and encode_setting:
-                            print(f"[DEBUG] ✓ Starting encoding for direct-video: {filepath}")
-                            self.status_update.emit(self.current_download_id, 'encoding')
-                            # Track encoding files for cleanup
-                            encoded_file = str(filepath).rsplit('.', 1)[0] + '_h264.mp4'
-                            self.partial_files.add(encoded_file)
-                            
-                            encoded_path = self.encode_to_h264(str(filepath), self.current_download_id)
-                            if encoded_path and self.current_download_id not in self.cancelled_downloads:
-                                print(f"[DEBUG] ✓ Direct-video encoding successful: {encoded_path}")
-                                self.partial_files.discard(encoded_path)
-                                self.download_complete.emit(download['id'], encoded_path)
-                            elif self.current_download_id in self.cancelled_downloads:
-                                # Encoding was cancelled - use original file as successful result
-                                print(f"[DEBUG] Encoding cancelled for {self.current_download_id}, using original file: {filepath}")
-                                if os.path.exists(str(filepath)):
-                                    self.download_complete.emit(download['id'], str(filepath))
-                                else:
-                                    self.download_error.emit(self.current_download_id, "Original file not found after encoding cancellation")
-                            else:
-                                # Encoding failed but not cancelled - use original file as fallback
-                                print(f"[DEBUG] ✗ Encoding failed for direct-video {self.current_download_id}, using original file: {filepath}")
-                                if os.path.exists(str(filepath)):
-                                    self.download_complete.emit(download['id'], str(filepath))
-                                else:
-                                    self.download_error.emit(self.current_download_id, "Original file not found after encoding failure")
+                            print(f"[DEBUG] ✓ Queuing encoding for direct-video: {filepath}")
+                            # Emit encoding_needed signal - EncodingWorker will handle the actual encoding
+                            # For direct-video, no yt-dlp info is available
+                            metadata_info = {
+                                'metadata_option': metadata_option,
+                                'info': None,
+                                'source_url': download['url']
+                            }
+                            keep_original = download.get('keep_original', False)
+                            self.encoding_needed.emit(self.current_download_id, str(filepath), keep_original, metadata_info)
+                            # Don't emit download_complete - EncodingWorker will emit encoding_complete when done
                         else:
                             print(f"[DEBUG] ✗ Skipping encoding for direct-video: needs_encoding={needs_encoding}, encode_vp9={encode_setting}")
                             self.download_complete.emit(download['id'], str(filepath))
@@ -674,17 +770,20 @@ class DownloadWorker(QThread):
                             continue
                     
                     quality = download.get('quality', 'best')
-                    
-                    # Set format based on quality
+
+                    # Set format based on quality.
+                    # Prefer non-AD (Audio Description) tracks: yt-dlp marks AD tracks
+                    # with a "-desc" language suffix (e.g. "en-desc"). We filter these out
+                    # first, then fall back to any audio if no regular track is available.
                     if quality == 'bestaudio':
-                        format_str = 'bestaudio/best'
+                        format_str = 'bestaudio[language!$=-desc]/bestaudio/best'
                     elif quality == 'best':
-                        format_str = 'bestvideo+bestaudio/best'
+                        format_str = 'bestvideo+(bestaudio[language!$=-desc]/bestaudio)/best'
                     elif quality == 'worst':
                         format_str = 'worstvideo+worstaudio/worst'
                     else:
                         # Specific resolution (numeric)
-                        format_str = f'bestvideo[height<={quality}]+bestaudio/best[height<={quality}]'
+                        format_str = f'bestvideo[height<={quality}]+(bestaudio[language!$=-desc]/bestaudio)/best[height<={quality}]'
                     
                     # Reset logger for this download
                     self.ytdlp_logger.reset()
@@ -693,6 +792,7 @@ class DownloadWorker(QThread):
                     ydl_opts = {
                         'format': format_str,
                         'progress_hooks': [self.progress_hook],
+                        'postprocessor_hooks': [self.postprocessor_hook],
                         'logger': self.ytdlp_logger,  # Custom logger to capture skip messages
                         'quiet': True,
                         'no_warnings': True,
@@ -1157,13 +1257,41 @@ class DownloadWorker(QThread):
                                     skip_reason = f"Files already exist ({len(downloaded_files)} files)"
                                     self.download_skipped.emit(self.current_download_id, skip_reason, final_path)
                                     continue
-                                print(f"[DEBUG] ===== EMITTING DOWNLOAD_COMPLETE (PLAYLIST) =====")
+
+                                # Check encoding and metadata for playlist/carousel files
+                                encode_setting = download.get('encode_vp9', True)
+                                any_encoding_queued = False
+
+                                print(f"[DEBUG] ===== PLAYLIST POST-PROCESSING =====")
                                 print(f"[DEBUG] Download ID: {self.current_download_id}")
                                 print(f"[DEBUG] Files: {len(downloaded_files)}")
-                                self.download_complete.emit(
-                                    self.current_download_id,
-                                    f"{final_path}|MULTI|{len(downloaded_files)} files"
-                                )
+                                print(f"[DEBUG] needs_encoding={needs_encoding}, encode_vp9={encode_setting}")
+                                print(f"[DEBUG] metadata_option={download.get('metadata_option')}")
+
+                                for file_path in downloaded_files:
+                                    if needs_encoding and encode_setting:
+                                        print(f"[DEBUG] ✓ Queuing encoding for playlist file: {file_path}")
+                                        metadata_info = {
+                                            'metadata_option': download.get('metadata_option'),
+                                            'info': info,
+                                            'source_url': download.get('url')
+                                        }
+                                        keep_original = download.get('keep_original', False)
+                                        self.encoding_needed.emit(self.current_download_id, file_path, keep_original, metadata_info)
+                                        any_encoding_queued = True
+                                    else:
+                                        # Embed metadata directly (no encoding needed)
+                                        self.embed_video_metadata_if_requested(
+                                            file_path, download.get('metadata_option'), info, download.get('url'))
+
+                                if not any_encoding_queued:
+                                    print(f"[DEBUG] ===== EMITTING DOWNLOAD_COMPLETE (PLAYLIST) =====")
+                                    print(f"[DEBUG] Download ID: {self.current_download_id}")
+                                    print(f"[DEBUG] Files: {len(downloaded_files)}")
+                                    self.download_complete.emit(
+                                        self.current_download_id,
+                                        f"{final_path}|MULTI|{len(downloaded_files)} files"
+                                    )
                             else:
                                 detailed_error = f"""Download Error: No files found after playlist download
 
@@ -1181,21 +1309,66 @@ Possible Causes:
                                 self.download_error.emit(self.current_download_id, detailed_error)
                         else:
                             # Single file download (original logic)
-                            filename = ydl.prepare_filename(info)
-                            
-                            # Handle various extensions
-                            possible_files = [
-                                filename,
-                                filename.rsplit('.', 1)[0] + '.mp4',
-                                filename.rsplit('.', 1)[0] + '.mkv',
-                                filename.rsplit('.', 1)[0] + '.webm',
-                            ]
-                            
-                            final_path = None
-                            for path in possible_files:
-                                if os.path.exists(path):
-                                    final_path = path
-                                    break
+                            print(f"[DEBUG] ===== FILE CHECKING AFTER DOWNLOAD =====")
+                            print(f"[DEBUG]   self.final_filepath: {self.final_filepath}")
+                            print(f"[DEBUG]   info.get('filepath'): {info.get('filepath')}")
+                            print(f"[DEBUG]   info.get('_filename'): {info.get('_filename')}")
+                            print(f"[DEBUG]   info.get('ext'): {info.get('ext')}")
+
+                            # List files in the save directory to see what actually exists
+                            import glob
+                            if organize_by_platform:
+                                extractor = info.get('extractor', 'Videos')
+                                if 'youtube' in extractor.lower():
+                                    check_dir = str(Path(save_path) / 'YouTube')
+                                elif 'vimeo' in extractor.lower():
+                                    check_dir = str(Path(save_path) / 'Vimeo')
+                                else:
+                                    check_dir = str(Path(save_path) / extractor)
+                            else:
+                                check_dir = save_path
+
+                            if os.path.exists(check_dir):
+                                files_in_dir = glob.glob(os.path.join(check_dir, '*'))
+                                print(f"[DEBUG]   Files in {check_dir}:")
+                                for f in files_in_dir[-10:]:  # Last 10 files
+                                    print(f"[DEBUG]     - {os.path.basename(f)}")
+                            else:
+                                print(f"[DEBUG]   Directory does not exist: {check_dir}")
+
+                            # First check if postprocessor captured the final filepath (after merging)
+                            if self.final_filepath and os.path.exists(self.final_filepath):
+                                final_path = self.final_filepath
+                                print(f"[DEBUG] ✓ Using postprocessor filepath: {final_path}")
+                            else:
+                                if self.final_filepath:
+                                    print(f"[DEBUG] ✗ Postprocessor filepath doesn't exist: {self.final_filepath}")
+                                else:
+                                    print(f"[DEBUG] ✗ No postprocessor filepath captured")
+
+                                # Fallback to prepare_filename and check various extensions
+                                filename = ydl.prepare_filename(info)
+                                print(f"[DEBUG] prepare_filename returned: {filename}")
+
+                                # Handle various extensions (merging may change extension)
+                                possible_files = [
+                                    filename,
+                                    filename.rsplit('.', 1)[0] + '.mp4',
+                                    filename.rsplit('.', 1)[0] + '.mkv',
+                                    filename.rsplit('.', 1)[0] + '.webm',
+                                    filename.rsplit('.', 1)[0] + '.m4a',  # Audio-only
+                                ]
+
+                                final_path = None
+                                for path in possible_files:
+                                    print(f"[DEBUG] Checking for file: {path}")
+                                    if os.path.exists(path):
+                                        final_path = path
+                                        print(f"[DEBUG] ✓ Found file: {path}")
+                                        break
+
+                                if not final_path:
+                                    print(f"[DEBUG] ✗ No file found in any checked path!")
                             
                             if final_path and self.current_download_id not in self.cancelled_downloads:
                                 # Remove from partial files once we have final path
@@ -1227,52 +1400,16 @@ Possible Causes:
                                 print(f"[DEBUG] yt-dlp encoding decision: needs_encoding={needs_encoding}, encode_vp9={encode_setting}")
                                 
                                 if needs_encoding and encode_setting:
-                                    print(f"[DEBUG] ✓ Starting encoding for yt-dlp video: {final_path}")
-                                    self.status_update.emit(self.current_download_id, 'encoding')
-                                    # Track encoding files for cleanup
-                                    encoded_file = final_path.rsplit('.', 1)[0] + '_h264.mp4'
-                                    self.partial_files.add(encoded_file)
-                                    
-                                    encoded_path = self.encode_to_h264(final_path, self.current_download_id)
-                                    if encoded_path and self.current_download_id not in self.cancelled_downloads:
-                                        print(f"[DEBUG] ✓ yt-dlp video encoding successful: {encoded_path}")
-                                        self.partial_files.discard(encoded_path)
-                                        # Embed metadata if requested
-                                        self.embed_video_metadata_if_requested(encoded_path, download.get('metadata_option'), info, download.get('url'))
-                                        self.download_complete.emit(self.current_download_id, encoded_path)
-                                    elif self.current_download_id in self.cancelled_downloads:
-                                        # Encoding was cancelled - use original file as successful result
-                                        print(f"[DEBUG] Encoding cancelled for {self.current_download_id}, using original file: {final_path}")
-                                        if os.path.exists(final_path):
-                                            # Embed metadata if requested
-                                            self.embed_video_metadata_if_requested(final_path, download.get('metadata_option'), info, download.get('url'))
-                                            self.download_complete.emit(self.current_download_id, final_path)
-                                        else:
-                                            self.download_error.emit(self.current_download_id, "Original file not found after encoding cancellation")
-                                    else:
-                                        # Encoding failed but not cancelled - check if original file exists
-                                        print(f"[DEBUG] ✗ Encoding failed for {self.current_download_id}, checking original file: {final_path}")
-                                        if os.path.exists(final_path):
-                                            print(f"[DEBUG] Using original file as fallback: {final_path}")
-                                            # Embed metadata if requested
-                                            self.embed_video_metadata_if_requested(final_path, download.get('metadata_option'), info, download.get('url'))
-                                            self.download_complete.emit(self.current_download_id, final_path)
-                                        else:
-                                            detailed_error = f"""Download Error: Encoding failed and original file not found
-
-Download Details:
-- URL: {download.get('url', 'Unknown')}
-- Type: {download.get('type', 'Unknown')} 
-- Original File: {final_path if 'final_path' in locals() else 'Unknown'}
-- Encode Settings: VP9 to H.264
-
-Possible Causes:
-- FFmpeg not installed or not in PATH
-- Insufficient disk space
-- File corruption during encoding
-- Original file was deleted or moved
-- Encoding process interrupted"""
-                                            self.download_error.emit(self.current_download_id, detailed_error)
+                                    print(f"[DEBUG] ✓ Queuing encoding for yt-dlp video: {final_path}")
+                                    # Emit encoding_needed signal - EncodingWorker will handle the actual encoding
+                                    metadata_info = {
+                                        'metadata_option': download.get('metadata_option'),
+                                        'info': info,
+                                        'source_url': download.get('url')
+                                    }
+                                    keep_original = download.get('keep_original', False)
+                                    self.encoding_needed.emit(self.current_download_id, final_path, keep_original, metadata_info)
+                                    # Don't emit download_complete - EncodingWorker will emit encoding_complete when done
                                 else:
                                     print(f"[DEBUG] ✗ Skipping encoding for yt-dlp video: needs_encoding={needs_encoding}, encode_vp9={encode_setting}")
                                     # Embed metadata if requested

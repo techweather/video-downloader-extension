@@ -19,6 +19,7 @@ from PyQt5.QtGui import QResizeEvent, QMoveEvent
 
 from config.settings import Settings
 from core.downloader import DownloadWorker
+from core.encoder import EncodingWorker
 from ui.components.download_item import DownloadItem
 from ui.components.video_selector import VideoSelectorDialog
 from ui.window_utils import bring_window_to_front
@@ -463,7 +464,8 @@ class MainWindow(QMainWindow):
         Settings.save(self.settings)
     
     def init_worker(self):
-        """Initialize the download worker thread"""
+        """Initialize the download worker thread and encoding worker"""
+        # Initialize download worker
         self.worker = DownloadWorker(self.download_queue)
         self.worker.progress_update.connect(self.update_progress)
         self.worker.download_complete.connect(self.download_finished)
@@ -472,29 +474,51 @@ class MainWindow(QMainWindow):
         self.worker.status_update.connect(self.update_status)
         self.worker.playlist_detected.connect(self.handle_playlist_detected)
         self.worker.download_skipped.connect(self.download_skipped_handler)
+        self.worker.encoding_needed.connect(self.queue_encoding_job)
         self.worker.start()
+
+        # Initialize encoding worker (runs in parallel with downloads)
+        self.encoding_worker = EncodingWorker()
+        self.encoding_worker.encoding_started.connect(self.encoding_started_handler)
+        self.encoding_worker.encoding_progress.connect(self.encoding_progress_handler)
+        self.encoding_worker.encoding_complete.connect(self.encoding_complete_handler)
+        self.encoding_worker.encoding_error.connect(self.encoding_error_handler)
+        self.encoding_worker.encoding_cancelled.connect(self.encoding_cancelled_handler)
+        self.encoding_worker.start()
     
     def init_tray(self):
         """Initialize system tray icon and menu"""
         self.tray_icon = QSystemTrayIcon(self)
         self.tray_icon.setIcon(self.style().standardIcon(QStyle.SP_ArrowDown))
-        
+
         # Create tray menu
         tray_menu = QMenu()
         show_action = QAction("Show", self)
         show_action.triggered.connect(self.show)
         quit_action = QAction("Quit", self)
-        quit_action.triggered.connect(QApplication.quit)
-        
+        quit_action.triggered.connect(self.quit_application)
+
         tray_menu.addAction(show_action)
         tray_menu.addSeparator()
         tray_menu.addAction(quit_action)
-        
+
         self.tray_icon.setContextMenu(tray_menu)
         self.tray_icon.show()
-        
+
         # Connect tray activation
         self.tray_icon.activated.connect(self.tray_activated)
+
+    def quit_application(self):
+        """Properly shut down workers and quit the application"""
+        print("[DEBUG] Shutting down workers...")
+        # Stop the encoding worker
+        self.encoding_worker.stop()
+        self.encoding_worker.wait(5000)  # Wait up to 5 seconds for clean shutdown
+        # Stop the download worker
+        self.download_queue.put(None)  # Signal worker to stop
+        self.worker.wait(5000)
+        print("[DEBUG] Workers stopped, quitting application")
+        QApplication.quit()
     
     def tray_activated(self, reason):
         """Handle system tray icon activation"""
@@ -906,8 +930,9 @@ class MainWindow(QMainWindow):
         self.status_label.setText(f"Active downloads: {self.count_active()}")
     
     def cancel_download(self, download_id):
-        """Cancel a download"""
+        """Cancel a download or encoding job"""
         self.worker.cancel_download(download_id)
+        self.encoding_worker.cancel_job(download_id)  # Also cancel any pending/active encoding
         if download_id in self.download_items:
             widget = self.download_items[download_id]['widget']
             widget.status_label.setText("Cancelling...")
@@ -925,7 +950,7 @@ class MainWindow(QMainWindow):
         """Update download status"""
         if download_id in self.download_items:
             widget = self.download_items[download_id]['widget']
-            
+
             if status.startswith('thumbnail:'):
                 # Extract and load thumbnail URL
                 thumbnail_url = status.replace('thumbnail:', '')
@@ -934,10 +959,17 @@ class MainWindow(QMainWindow):
                 widget.set_downloading()
                 widget.status_label.setText("Downloading...")
                 widget.status_label.setStyleSheet("color: #3498db;")
+            elif status == 'merging':
+                widget.status_label.setText("Merging audio & video...")
+                widget.status_label.setStyleSheet("color: #16a085;")  # Teal color
+                widget.progress_bar.setValue(100)  # Show as complete since we can't track merge progress
             elif status == 'encoding':
                 widget.status_label.setText("Encoding to H.264...")
                 widget.status_label.setStyleSheet("color: #9b59b6;")
                 widget.progress_bar.setValue(0)  # Reset for encoding progress
+            elif status.startswith('embedding'):
+                widget.status_label.setText("Embedding metadata...")
+                widget.status_label.setStyleSheet("color: #16a085;")
     
     def download_finished(self, download_id, path):
         """Handle download completion"""
@@ -1093,32 +1125,95 @@ class MainWindow(QMainWindow):
 
         self.status_label.setText(f"Active downloads: {self.count_active()}")
 
+    def queue_encoding_job(self, download_id, filepath, keep_original, metadata_info):
+        """Queue an encoding job for the encoding worker"""
+        print(f"[DEBUG] Queuing encoding job for {download_id}: {filepath}")
+        # Update UI to show download complete, awaiting encoding
+        if download_id in self.download_items:
+            widget = self.download_items[download_id]['widget']
+            widget.progress_bar.setValue(100)
+            widget.status_label.setText("Queued for encoding...")
+            widget.status_label.setStyleSheet("color: #8e44ad;")  # Purple to indicate encoding-related
+        self.encoding_worker.add_job(download_id, filepath, keep_original, metadata_info)
+
+    def encoding_started_handler(self, download_id):
+        """Handle encoding started"""
+        print(f"[DEBUG] Encoding started for {download_id}")
+        if download_id in self.download_items:
+            widget = self.download_items[download_id]['widget']
+            widget.status_label.setText("Encoding to H.264...")
+            widget.status_label.setStyleSheet("color: #9b59b6;")
+            widget.progress_bar.setValue(0)
+
+    def encoding_progress_handler(self, download_id, percent, status):
+        """Handle encoding progress updates"""
+        if download_id in self.download_items:
+            widget = self.download_items[download_id]['widget']
+            widget.progress_bar.setValue(percent)
+            widget.status_label.setText(status)
+
+    def encoding_complete_handler(self, download_id, final_path):
+        """Handle encoding completion - same as download_finished"""
+        print(f"[DEBUG] Encoding complete for {download_id}: {final_path}")
+        # Reuse the download_finished handler since the UI behavior is the same
+        self.download_finished(download_id, final_path)
+
+    def encoding_error_handler(self, download_id, error):
+        """Handle encoding error"""
+        print(f"[DEBUG] Encoding error for {download_id}: {error}")
+        # Bring window to front so user sees the error
+        bring_window_to_front(self)
+
+        if download_id in self.download_items:
+            widget = self.download_items[download_id]['widget']
+            widget.progress_bar.setValue(0)
+            short_error = f"Encoding failed: {error[:30]}..." if len(error) > 30 else f"Encoding failed: {error}"
+            widget.set_error(short_error, f"Encoding Error: {error}")
+
+        self.status_label.setText(f"Active downloads: {self.count_active()}")
+
+    def encoding_cancelled_handler(self, download_id):
+        """Handle encoding cancellation"""
+        print(f"[DEBUG] Encoding cancelled for {download_id}")
+        if download_id in self.download_items:
+            widget = self.download_items[download_id]['widget']
+            widget.progress_bar.setValue(0)
+            widget.status_label.setText("Encoding Cancelled")
+            widget.status_label.setStyleSheet("color: #6c757d;")
+            widget.cancel_btn.setEnabled(False)
+
+        self.status_label.setText(f"Active downloads: {self.count_active()}")
+
     def clear_completed(self):
-        """Clear completed, failed, and skipped downloads from the list"""
+        """Clear completed, failed, skipped, and cancelled downloads from the list"""
         to_remove = []
         for download_id, item_data in self.download_items.items():
             status = item_data['widget'].status_label.text()
-            if status.startswith("Complete") or status.startswith("Failed") or status.startswith("Skipped"):
+            if (status.startswith("Complete") or status.startswith("Failed") or
+                status.startswith("Skipped") or status.startswith("Cancel") or
+                status.startswith("Encoding Cancelled") or status.startswith("Encoding failed")):
                 to_remove.append(download_id)
-        
+
         # Remove items from UI and storage
         for download_id in to_remove:
             item = self.download_items[download_id]['item']
             self.download_list.takeItem(self.download_list.row(item))
             del self.download_items[download_id]
-    
+
     def count_active(self):
         """
-        Count active downloads (not complete, failed, cancelled, or skipped).
+        Count active downloads and encoding jobs.
 
         Returns:
-            int: Number of active downloads
+            int: Number of active downloads/encoding jobs
         """
         count = 0
         for item_data in self.download_items.values():
             status = item_data['widget'].status_label.text()
+            # Active if not in a terminal state
             if not (status.startswith("Complete") or status.startswith("Failed") or
-                    status.startswith("Cancel") or status.startswith("Skipped")):
+                    status.startswith("Cancel") or status.startswith("Skipped") or
+                    status.startswith("Encoding Cancelled") or status.startswith("Encoding failed")):
                 count += 1
         return count
     
