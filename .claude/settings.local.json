@@ -23,7 +23,9 @@
       "WebFetch(domain:github.com)",
       "WebFetch(domain:raw.githubusercontent.com)",
       "Bash(pip show:*)",
-      "Bash(git commit -m \"$\\(cat <<''EOF''\nProgress bar fix, parallel encoding, Instagram carousel metadata fix, avoid audio description tracks\n\nCo-Authored-By: Claude Opus 4.5 <noreply@anthropic.com>\nEOF\n\\)\")"
+      "Bash(git commit -m \"$\\(cat <<''EOF''\nProgress bar fix, parallel encoding, Instagram carousel metadata fix, avoid audio description tracks\n\nCo-Authored-By: Claude Opus 4.5 <noreply@anthropic.com>\nEOF\n\\)\")",
+      "Bash(git push)",
+      "Bash(git commit:*)"
     ],
     "deny": []
   }

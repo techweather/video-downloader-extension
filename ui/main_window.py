@@ -20,6 +20,7 @@ from PyQt5.QtGui import QResizeEvent, QMoveEvent
 from config.settings import Settings
 from core.downloader import DownloadWorker
 from core.encoder import EncodingWorker
+from core.updater import get_ytdlp_version, VersionCheckWorker, InstallUpdateWorker
 from ui.components.download_item import DownloadItem
 from ui.components.video_selector import VideoSelectorDialog
 from ui.window_utils import bring_window_to_front
@@ -64,6 +65,9 @@ class MainWindow(QMainWindow):
         # Connect signals
         self.new_download.connect(self.add_download)
         self.video_list_received.connect(self.handle_video_list)
+
+        # Check for yt-dlp updates in the background
+        self._check_ytdlp_version()
     
     def init_ui(self):
         """Initialize the user interface"""
@@ -328,13 +332,30 @@ class MainWindow(QMainWindow):
         organization_row.addWidget(self.metadata_combo)
         organization_row.addStretch()
         
+        # yt-dlp version and update status (single line, no button by default)
+        update_row = QHBoxLayout()
+
+        self._ytdlp_current_version = get_ytdlp_version()
+        self._ytdlp_latest_version = None  # set after background check
+
+        self.ytdlp_version_label = QLabel(f"yt-dlp: {self._ytdlp_current_version}")
+        self.ytdlp_version_label.setStyleSheet("color: #555; font-size: 12px;")
+
+        self.ytdlp_status_label = QLabel("checking for updates...")
+        self.ytdlp_status_label.setStyleSheet("color: #999; font-size: 12px; font-style: italic;")
+
+        update_row.addWidget(self.ytdlp_version_label)
+        update_row.addWidget(self.ytdlp_status_label)
+        update_row.addStretch()
+
         # Assemble settings layout
         settings_layout.addLayout(encoding_row)
         settings_layout.addLayout(organization_row)
-        
+        settings_layout.addLayout(update_row)
+
         settings_widget.setLayout(settings_layout)
         settings_widget.setStyleSheet("QWidget { background-color: #f0f0f0; border-radius: 5px; }")
-        
+
         parent_layout.addWidget(settings_widget)
     
     def _create_adaptive_divider(self):
@@ -520,6 +541,63 @@ class MainWindow(QMainWindow):
         print("[DEBUG] Workers stopped, quitting application")
         QApplication.quit()
     
+    def _check_ytdlp_version(self):
+        """Spawn a background thread to check for yt-dlp updates."""
+        self._version_check_worker = VersionCheckWorker()
+        self._version_check_worker.finished.connect(self._on_version_check_done)
+        self._version_check_worker.start()
+
+    def _on_version_check_done(self, latest):
+        """Handle the result of the background version check."""
+        current = self._ytdlp_current_version
+        if not latest:
+            # Check failed (network error, etc.) — just hide status quietly
+            self.ytdlp_status_label.setText("")
+            return
+
+        self._ytdlp_latest_version = latest
+
+        if current == latest:
+            self.ytdlp_status_label.setText("\u2713 Up to date")
+            self.ytdlp_status_label.setStyleSheet("color: #27ae60; font-size: 12px; font-style: normal;")
+        else:
+            # Show clickable "Update available" text
+            self.ytdlp_status_label.setText(f"Update available ({latest})")
+            self.ytdlp_status_label.setStyleSheet(
+                "color: #2980b9; font-size: 12px; font-style: normal; "
+                "text-decoration: underline; cursor: pointer;"
+            )
+            self.ytdlp_status_label.setCursor(__import__('PyQt5').QtCore.Qt.PointingHandCursor)
+            self.ytdlp_status_label.mousePressEvent = lambda _: self._start_ytdlp_update()
+
+    def _start_ytdlp_update(self):
+        """Kick off the actual yt-dlp install in a background thread."""
+        if not self._ytdlp_latest_version:
+            return
+
+        # Switch to "Updating..." state
+        self.ytdlp_status_label.setText("Updating...")
+        self.ytdlp_status_label.setStyleSheet("color: #999; font-size: 12px; font-style: italic;")
+        self.ytdlp_status_label.setCursor(__import__('PyQt5').QtCore.Qt.ArrowCursor)
+        self.ytdlp_status_label.mousePressEvent = lambda _: None  # disable click
+
+        self._install_worker = InstallUpdateWorker(self._ytdlp_latest_version)
+        self._install_worker.status_update.connect(
+            lambda msg: self.ytdlp_status_label.setText(msg))
+        self._install_worker.finished.connect(self._on_install_finished)
+        self._install_worker.start()
+
+    def _on_install_finished(self, success, message, new_version):
+        """Handle install completion."""
+        if success:
+            self._ytdlp_current_version = new_version
+            self.ytdlp_version_label.setText(f"yt-dlp: {new_version}")
+            self.ytdlp_status_label.setText(f"\u2713 {message}")
+            self.ytdlp_status_label.setStyleSheet("color: #27ae60; font-size: 12px; font-style: normal;")
+        else:
+            self.ytdlp_status_label.setText(message)
+            self.ytdlp_status_label.setStyleSheet("color: #e67e22; font-size: 12px; font-style: normal;")
+
     def tray_activated(self, reason):
         """Handle system tray icon activation"""
         if reason == QSystemTrayIcon.Trigger:
@@ -1065,8 +1143,11 @@ class MainWindow(QMainWindow):
             widget = self.download_items[download_id]['widget']
             widget.progress_bar.setValue(0)
             
-            # Create short error for display (first 50 chars)
-            short_error = error[:50] + "..." if len(error) > 50 else error
+            # Clean error for single-line display: strip ANSI codes and collapse whitespace
+            import re
+            clean = re.sub(r'\x1b\[[0-9;]*m', '', error)  # strip ANSI color codes
+            clean = ' '.join(clean.split())  # collapse newlines/whitespace to single spaces
+            short_error = clean[:60] + "..." if len(clean) > 60 else clean
             
             # Use the new set_error method to store full error details
             widget.set_error(short_error, error)
