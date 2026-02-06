@@ -1,8 +1,8 @@
 {
   "manifest_version": 2,
-  "name": "Media Downloader Connector",
+  "name": "dlwithit Connector",
   "version": "2.0",
-  "description": "Send media URLs to native downloader app",
+  "description": "Browser extension for dlwithit - download images and videos from the web",
   "permissions": [
     "contextMenus",
     "activeTab",

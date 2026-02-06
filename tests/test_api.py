@@ -20,7 +20,7 @@ class TestFlaskAPI:
             
             data = response.get_json()
             assert data['status'] == 'healthy'
-            assert data['message'] == 'Media Downloader API is running'
+            assert data['message'] == 'dlwithit API is running'
             assert 'window_connected' in data
     
     def test_health_endpoint_with_running_server(self, running_flask_server):
@@ -40,7 +40,7 @@ class TestFlaskAPI:
             assert response.status_code == 200
             
             data = response.get_json()
-            assert data['name'] == 'Media Downloader API'
+            assert data['name'] == 'dlwithit API'
             assert data['version'] == '1.0.0'
             assert 'endpoints' in data
             assert len(data['endpoints']) == 3

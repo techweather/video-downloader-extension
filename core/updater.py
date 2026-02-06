@@ -31,7 +31,7 @@ class VersionCheckWorker(QThread):
     def run(self):
         try:
             url = "https://api.github.com/repos/yt-dlp/yt-dlp/releases/latest"
-            req = urllib.request.Request(url, headers={"User-Agent": "MediaDownloader/1.0"})
+            req = urllib.request.Request(url, headers={"User-Agent": "dlwithit/1.0"})
             with urllib.request.urlopen(req, timeout=15) as resp:
                 data = json.loads(resp.read().decode())
             latest = data.get("tag_name", "").lstrip("v")

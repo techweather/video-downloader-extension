@@ -110,7 +110,7 @@ class FlaskServer:
             """
             return jsonify({
                 "status": "healthy",
-                "message": "Media Downloader API is running",
+                "message": "dlwithit API is running",
                 "window_connected": self.window is not None
             })
         
@@ -123,7 +123,7 @@ class FlaskServer:
                 JSON response with API information
             """
             return jsonify({
-                "name": "Media Downloader API",
+                "name": "dlwithit API",
                 "version": "1.0.0",
                 "endpoints": [
                     {"path": "/download", "method": "POST", "description": "Submit download requests"},

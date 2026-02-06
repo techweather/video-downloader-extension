@@ -71,7 +71,7 @@ class MainWindow(QMainWindow):
     
     def init_ui(self):
         """Initialize the user interface"""
-        self.setWindowTitle("Media Downloader")
+        self.setWindowTitle("dlwithit")
         # Window geometry will be set by restore_window_geometry()
         
         central_widget = QWidget()
@@ -1447,7 +1447,7 @@ class MainWindow(QMainWindow):
         event.ignore()
         self.hide()
         self.tray_icon.showMessage(
-            "Media Downloader",
+            "dlwithit",
             "Application minimized to tray",
             QSystemTrayIcon.Information,
             1000

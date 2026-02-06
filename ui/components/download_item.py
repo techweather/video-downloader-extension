@@ -241,7 +241,7 @@ Download Information:
 - URL: {self._get_url_from_ui()}
 
 System Information:
-- Application: Media Downloader
+- Application: dlwithit
 - Error copied at: {self._get_current_time()}
 """
             clipboard.setText(error_report)
