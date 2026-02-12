@@ -685,6 +685,7 @@ class MainWindow(QMainWindow):
             'id': download_id,
             'url': data['url'],
             'type': data.get('type', 'video'),
+            'title': data.get('title'),
             'referrer': data.get('pageUrl', data.get('source')),
             'quality': 'best',  # Always best quality
             'encode_vp9': self.settings.get('encode_vp9', True),

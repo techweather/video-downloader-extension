@@ -168,6 +168,77 @@ function detectVideoEmbeds() {
     }
   });
   
+  // Find Mux videos from thumbnails and page data
+  const muxIds = new Set();
+
+  // Check img elements for Mux thumbnail URLs
+  document.querySelectorAll('img[src*="image.mux.com"]').forEach(function(img) {
+    var match = img.src.match(/image\.mux\.com\/([A-Za-z0-9]+)/);
+    if (match) muxIds.add(match[1]);
+  });
+
+  // Check __NEXT_DATA__ for playbackId fields
+  var nextDataScript = document.querySelector('script#__NEXT_DATA__');
+  if (nextDataScript) {
+    try {
+      var nextText = nextDataScript.textContent;
+      var re = /"playbackId"\s*:\s*"([A-Za-z0-9]+)"/g;
+      var m;
+      while ((m = re.exec(nextText)) !== null) {
+        muxIds.add(m[1]);
+      }
+    } catch (e) {}
+  }
+
+  // Also check other inline scripts
+  document.querySelectorAll('script:not([src])').forEach(function(script) {
+    var text = script.textContent;
+    if (text.indexOf('playbackId') !== -1 || text.indexOf('mux.com') !== -1) {
+      var re = /"playbackId"\s*:\s*"([A-Za-z0-9]+)"/g;
+      var m;
+      while ((m = re.exec(text)) !== null) {
+        muxIds.add(m[1]);
+      }
+    }
+  });
+
+  console.log('Found ' + muxIds.size + ' Mux playback IDs');
+
+  // Build a clean base title from page title (strip site name suffixes)
+  var pageTitle = document.title || '';
+  // Remove common site name patterns: " — Site Name", " | Site Name", " - Site Name"
+  var cleanPageTitle = pageTitle.replace(/\s*[\|\u2014\u2013\-]\s*[^|\u2014\u2013\-]*$/, '').trim();
+  if (!cleanPageTitle) cleanPageTitle = 'Video';
+
+  var muxIndex = 0;
+  var muxTotal = muxIds.size;
+
+  muxIds.forEach(function(playbackId) {
+    if (processedIds.has('mux_' + playbackId)) return;
+    processedIds.add('mux_' + playbackId);
+    muxIndex++;
+
+    var downloadUrl = 'https://stream.mux.com/' + playbackId + '/high.mp4';
+
+    // Try to find title from nearby thumbnail element
+    var title = null;
+    var thumbImg = document.querySelector('img[src*="' + playbackId + '"]');
+    if (thumbImg) title = findVideoTitle(thumbImg);
+
+    // Fall back to page title with sequence number
+    if (!title) {
+      title = muxTotal > 1 ? cleanPageTitle + ' - Video ' + muxIndex : cleanPageTitle;
+    }
+
+    allVideos.push({
+      id: playbackId,
+      url: downloadUrl,
+      title: title,
+      platform: 'mux',
+      originalSrc: 'https://stream.mux.com/' + playbackId
+    });
+  });
+
   console.log('Total unique video embeds found: ' + allVideos.length);
   return allVideos;
 }
@@ -446,8 +517,16 @@ function triggerScrapeVideos(tab) {
             const videoElements = document.querySelectorAll('video');
             console.log('Found', videoElements.length, 'video elements');
 
+            let blobVideoCount = 0;
+
             videoElements.forEach((video, index) => {
               if (video.src) {
+                // Skip blob: URLs (from MediaSource/HLS players like Mux) - not directly downloadable
+                if (video.src.startsWith('blob:')) {
+                  console.log('Skipping blob: URL on video element', index);
+                  blobVideoCount++;
+                  return;
+                }
                 const url = resolveUrl(video.src);
                 if (url && !processedUrls.has(url)) {
                   processedUrls.add(url);
@@ -468,6 +547,10 @@ function triggerScrapeVideos(tab) {
               }
 
               video.querySelectorAll('source').forEach(source => {
+                if (source.src && source.src.startsWith('blob:')) {
+                  blobVideoCount++;
+                  return;
+                }
                 const url = resolveUrl(source.src);
                 if (url && !processedUrls.has(url)) {
                   processedUrls.add(url);
@@ -487,6 +570,8 @@ function triggerScrapeVideos(tab) {
                 }
               });
             });
+
+            console.log('Blob video elements skipped:', blobVideoCount);
 
             // 2. Look for data attribute videos
             const elementsWithVideoData = document.querySelectorAll('[data-video-src], [data-mp4-src], video[data-src]');
@@ -544,10 +629,226 @@ function triggerScrapeVideos(tab) {
               }
             });
 
+            // 4. Squarespace hosted videos (data-config-video JSON attribute)
+            console.log('Looking for Squarespace hosted videos...');
+            document.querySelectorAll('[data-config-video]').forEach(element => {
+              try {
+                const configJson = element.getAttribute('data-config-video');
+                if (!configJson) return;
+                const config = JSON.parse(configJson);
+                const sc = config.structuredContent || {};
+                const alexandriaUrl = sc.alexandriaUrl || config.alexandriaUrl;
+                const systemDataId = config.systemDataId;
+
+                if (alexandriaUrl && systemDataId) {
+                  // Build HLS playlist URL from the alexandria base
+                  // Format: https://video.squarespace-cdn.com/content/v1/{libraryId}/{dataId}/playlist.m3u8
+                  const baseUrl = alexandriaUrl.replace(/\\{variant\\}$/, '').replace(/\\/$/, '');
+                  const hlsUrl = baseUrl + '/playlist.m3u8';
+
+                  if (!processedUrls.has(hlsUrl)) {
+                    processedUrls.add(hlsUrl);
+                    const title = config.filename
+                      ? config.filename.replace(/\\.[^.]+$/, '')  // strip extension
+                      : findNearbyText(element) || ('Video ' + (videos.length + 1));
+                    const thumbnail = findNearbyImage(element);
+                    console.log('Found Squarespace video:', title, hlsUrl);
+                    videos.push({
+                      url: hlsUrl,
+                      type: 'hls',
+                      title: title,
+                      thumbnail: thumbnail,
+                      originalFilename: config.filename || null
+                    });
+                  }
+                }
+              } catch (e) {
+                console.log('Error parsing data-config-video:', e);
+              }
+            });
+
+            // 5. Scan ALL data-* attributes for video URLs (.mp4, .webm, .mov, .m3u8)
+            console.log('Scanning data-* attributes for video URLs...');
+            document.querySelectorAll('*').forEach(element => {
+              for (const attr of element.attributes) {
+                if (!attr.name.startsWith('data-') || attr.name === 'data-config-video') continue;
+                const val = attr.value;
+                if (!val || val.length > 2000) continue;
+                // Match URLs containing video extensions
+                const urlMatches = val.match(/https?:\\/\\/[^\\s"'<>]+\\.(mp4|webm|mov|m3u8)(\\?[^\\s"'<>]*)?/gi);
+                if (urlMatches) {
+                  urlMatches.forEach(url => {
+                    if (!processedUrls.has(url)) {
+                      processedUrls.add(url);
+                      const isHls = url.toLowerCase().includes('.m3u8');
+                      let title = findNearbyText(element);
+                      if (!title) {
+                        const filename = getFilenameFromUrl(url);
+                        title = filename || ('Video ' + (videos.length + 1));
+                      }
+                      console.log('Found video URL in', attr.name + ':', url);
+                      videos.push({
+                        url: url,
+                        type: isHls ? 'hls' : 'data-attribute',
+                        title: title,
+                        thumbnail: findNearbyImage(element),
+                        originalFilename: getFilenameFromUrl(url)
+                      });
+                    }
+                  });
+                }
+              }
+            });
+
+            // 6. Video URLs in inline <script> tags (JSON configs, framework data)
+            console.log('Scanning inline scripts for video URLs...');
+            document.querySelectorAll('script:not([src])').forEach(script => {
+              const text = script.textContent;
+              if (!text || text.length > 500000) return;
+              // Match full video URLs
+              const urlPattern = /https?:\\/\\/[^\\s"'<>{}]+\\.(mp4|webm|mov)(\\?[^\\s"'<>{}]*)?/gi;
+              let match;
+              while ((match = urlPattern.exec(text)) !== null) {
+                const url = match[0];
+                if (!processedUrls.has(url)) {
+                  processedUrls.add(url);
+                  console.log('Found video URL in script tag:', url);
+                  videos.push({
+                    url: url,
+                    type: 'script-json',
+                    title: getFilenameFromUrl(url) || ('Video ' + (videos.length + 1)),
+                    thumbnail: null,
+                    originalFilename: getFilenameFromUrl(url)
+                  });
+                }
+              }
+            });
+
+            // 7. Preload/prefetch link tags
+            console.log('Looking for preloaded video links...');
+            document.querySelectorAll('link[rel="preload"][as="video"], link[rel="prefetch"][as="video"], link[rel="preload"][href*=".mp4"], link[rel="preload"][href*=".webm"], link[rel="prefetch"][href*=".mp4"]').forEach(link => {
+              const url = resolveUrl(link.href);
+              if (url && !processedUrls.has(url)) {
+                processedUrls.add(url);
+                console.log('Found preloaded video:', url);
+                videos.push({
+                  url: url,
+                  type: 'preload',
+                  title: getFilenameFromUrl(url) || ('Video ' + (videos.length + 1)),
+                  thumbnail: null,
+                  originalFilename: getFilenameFromUrl(url)
+                });
+              }
+            });
+
+            // 8. Meta tags (og:video, twitter:player:stream)
+            console.log('Looking for video meta tags...');
+            ['meta[property="og:video"]', 'meta[property="og:video:url"]', 'meta[property="og:video:secure_url"]', 'meta[name="twitter:player:stream"]'].forEach(selector => {
+              const meta = document.querySelector(selector);
+              if (meta && meta.content) {
+                const url = resolveUrl(meta.content);
+                if (url && !processedUrls.has(url)) {
+                  processedUrls.add(url);
+                  console.log('Found video meta tag:', selector, url);
+                  const isHls = url.toLowerCase().includes('.m3u8');
+                  videos.push({
+                    url: url,
+                    type: isHls ? 'hls' : 'meta-tag',
+                    title: document.title || ('Video ' + (videos.length + 1)),
+                    thumbnail: null,
+                    originalFilename: getFilenameFromUrl(url)
+                  });
+                }
+              }
+            });
+
+            // 9. Detect Mux videos from image.mux.com thumbnail URLs in the DOM
+            console.log('Looking for Mux video thumbnails...');
+            const muxIds = new Set();
+
+            // Check all img elements for Mux thumbnail URLs
+            document.querySelectorAll('img[src*="image.mux.com"]').forEach(img => {
+              const match = img.src.match(/image\\.mux\\.com\\/([A-Za-z0-9]+)/);
+              if (match) muxIds.add(match[1]);
+            });
+
+            // Also check srcset, style, and data attributes for Mux references
+            document.querySelectorAll('[srcset*="image.mux.com"], [style*="image.mux.com"], [poster*="image.mux.com"]').forEach(el => {
+              const text = el.getAttribute('srcset') || el.getAttribute('style') || el.getAttribute('poster') || '';
+              const matches = text.matchAll(/image\\.mux\\.com\\/([A-Za-z0-9]+)/g);
+              for (const m of matches) muxIds.add(m[1]);
+            });
+
+            // 10. Detect Mux videos from __NEXT_DATA__ or inline JSON (Next.js / React SSR pages)
+            console.log('Looking for Mux playback IDs in page data...');
+            const nextDataScript = document.querySelector('script#__NEXT_DATA__');
+            if (nextDataScript) {
+              try {
+                const nextData = nextDataScript.textContent;
+                const playbackMatches = nextData.matchAll(/"playbackId"\\s*:\\s*"([A-Za-z0-9]+)"/g);
+                for (const m of playbackMatches) muxIds.add(m[1]);
+                console.log('Found playbackIds in __NEXT_DATA__');
+              } catch (e) {
+                console.log('Error parsing __NEXT_DATA__:', e);
+              }
+            }
+
+            // Also scan all script tags for playbackId patterns (skip already-scanned ones)
+            document.querySelectorAll('script:not([src])').forEach(script => {
+              const text = script.textContent;
+              if (text.includes('playbackId') || text.includes('mux.com')) {
+                const matches = text.matchAll(/"playbackId"\\s*:\\s*"([A-Za-z0-9]+)"/g);
+                for (const m of matches) muxIds.add(m[1]);
+              }
+            });
+
+            console.log('Found', muxIds.size, 'unique Mux playback IDs');
+
+            // Build a clean base title from page title (strip site name suffixes)
+            const rawPageTitle = document.title || '';
+            const cleanPageTitle = rawPageTitle.replace(/\s*[|\u2014\u2013-]\s*[^|\u2014\u2013-]*$/, '').trim() || 'Video';
+            let muxIndex = 0;
+            const muxTotal = muxIds.size;
+
+            // Convert Mux IDs to downloadable video entries
+            muxIds.forEach(playbackId => {
+              const downloadUrl = 'https://stream.mux.com/' + playbackId + '/high.mp4';
+              const thumbnailUrl = 'https://image.mux.com/' + playbackId + '/thumbnail.jpg?time=0';
+              if (!processedUrls.has(downloadUrl)) {
+                processedUrls.add(downloadUrl);
+                muxIndex++;
+
+                // Try to find a title from a nearby element that uses this ID as a thumbnail
+                let title = null;
+                const thumbImg = document.querySelector('img[src*="' + playbackId + '"]');
+                if (thumbImg) {
+                  title = findNearbyText(thumbImg);
+                }
+                // Fall back to page title with sequence number
+                if (!title) {
+                  title = muxTotal > 1 ? cleanPageTitle + ' - Video ' + muxIndex : cleanPageTitle;
+                }
+
+                videos.push({
+                  url: downloadUrl,
+                  type: 'mux',
+                  title: title,
+                  thumbnail: thumbnailUrl,
+                  originalFilename: playbackId
+                });
+              }
+            });
+
             console.log('Total videos found:', videos.length);
 
             if (videos.length === 0) {
-              alert('No videos found on this page. The page may use a different video delivery method or videos may not be loaded yet.');
+              let msg = 'No downloadable videos found on this page.';
+              if (blobVideoCount > 0) {
+                msg += '\\n\\nDetected ' + blobVideoCount + ' video player(s) using blob: URLs (streaming). Try the "Download Media" option instead, which uses yt-dlp for streaming video extraction.';
+              } else {
+                msg += '\\nThe page may use a different video delivery method or videos may not be loaded yet.';
+              }
+              alert(msg);
             } else {
               sendVideosToBackground(videos, document.title, window.location.href);
             }

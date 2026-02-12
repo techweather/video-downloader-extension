@@ -357,7 +357,14 @@ class EncodingWorker(QThread):
         title = info.get('title', 'Downloaded Video')
         description = info.get('description', '')
         uploader = info.get('uploader') or info.get('channel') or info.get('uploader_id')
-        webpage_url = info.get('webpage_url', source_url)
+        # Prefer our source_url (page URL from referrer) over yt-dlp's webpage_url
+        # (which for generic/HLS downloads is the CDN URL, not the artist's page)
+        webpage_url = source_url or info.get('webpage_url', '')
+
+        # Use title override if provided (for HLS/generic where yt-dlp title is useless)
+        title_override = metadata_info.get('title_override')
+        if title_override:
+            title = title_override
 
         # Truncate description if too long
         if description and len(description) > 500:

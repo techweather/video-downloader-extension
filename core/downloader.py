@@ -316,48 +316,73 @@ class DownloadWorker(QThread):
             else:
                 image_dir = Path(save_path)
             image_dir.mkdir(parents=True, exist_ok=True)
-            
+
             # Get filename from URL
             parsed = urlparse(url)
             filename = os.path.basename(unquote(parsed.path))
-            
+
             # Fallback filename if needed
             if not filename or '.' not in filename:
                 ext = 'jpg'  # Default extension
                 timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
                 filename = f'image_{timestamp}.{ext}'
-            
+
             filepath = image_dir / filename
-            
+
             # Handle duplicates
             counter = 1
             while filepath.exists():
                 name, ext = filename.rsplit('.', 1)
                 filepath = image_dir / f"{name}_{counter}.{ext}"
                 counter += 1
-            
+
             # Track this file for cleanup if cancelled
             self.partial_files.add(str(filepath))
-            
-            # Set up headers to mimic browser request
-            headers = {
-                'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36',
-                'Accept': 'image/avif,image/webp,image/apng,image/svg+xml,image/*,*/*;q=0.8',
-                'Accept-Language': 'en-US,en;q=0.9',
-                'Accept-Encoding': 'gzip, deflate, br',
-                'Cache-Control': 'no-cache',
-                'Pragma': 'no-cache',
-            }
-            
-            # Add referrer if provided
-            if referrer:
-                headers['Referer'] = referrer
-                # Also try origin for some sites
-                origin = urlparse(referrer)
-                headers['Origin'] = f"{origin.scheme}://{origin.netloc}"
-            
-            # Download with progress
-            response = requests.get(url, stream=True, headers=headers, timeout=30)
+
+            # Strategy: Start with minimal headers (matches thumbnail behavior which works),
+            # then escalate to browser-like headers with Referer if the simple request fails.
+            # CDNs like Sanity respond with 'Vary: Origin' and reject requests that include
+            # an Origin header from an unrecognized domain, but accept requests with no Origin at all.
+
+            header_strategies = [
+                # Strategy 1: Minimal headers (matches working thumbnail fetch)
+                {
+                    'Accept': 'image/avif,image/webp,image/apng,image/svg+xml,image/*,*/*;q=0.8',
+                },
+                # Strategy 2: Add User-Agent (some servers require it)
+                {
+                    'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36',
+                    'Accept': 'image/avif,image/webp,image/apng,image/svg+xml,image/*,*/*;q=0.8',
+                },
+                # Strategy 3: Add Referer (no Origin) for hotlink-protected servers
+                {
+                    'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36',
+                    'Accept': 'image/avif,image/webp,image/apng,image/svg+xml,image/*,*/*;q=0.8',
+                    'Referer': referrer or '',
+                },
+            ]
+
+            # Remove strategy 3 if no referrer available
+            if not referrer:
+                header_strategies = header_strategies[:2]
+
+            print(f"[DEBUG] download_image() called:")
+            print(f"[DEBUG]   URL: {url}")
+            print(f"[DEBUG]   Referrer received: {referrer}")
+
+            response = None
+            for i, headers in enumerate(header_strategies):
+                print(f"[DEBUG]   Trying header strategy {i + 1}/{len(header_strategies)}: {list(headers.keys())}")
+                response = requests.get(url, stream=True, headers=headers, timeout=30)
+                print(f"[DEBUG]   Strategy {i + 1} response status: {response.status_code}")
+
+                if response.status_code != 403:
+                    break
+                print(f"[DEBUG]   Got 403, trying next strategy...")
+
+            print(f"[DEBUG]   Final response status: {response.status_code}")
+            print(f"[DEBUG]   Response headers: {dict(response.headers)}")
+
             response.raise_for_status()
             
             total_size = int(response.headers.get('content-length', 0))
@@ -530,28 +555,42 @@ class DownloadWorker(QThread):
     def embed_video_metadata_if_requested(self, filepath, metadata_option, info, source_url):
         """
         Embed metadata into video file if embedded metadata is requested
-        
+
         Args:
             filepath (str): Path to the video file
             metadata_option (str): Metadata option ('embedded', 'sidecar', 'none')
             info (dict): yt-dlp info dictionary with video metadata
-            source_url (str): Original source URL
-            
+            source_url (str): Original source URL (prefer page URL over CDN URL)
+
         Returns:
             bool: True if embedding was attempted (regardless of success)
         """
         if metadata_option != 'embedded':
             return False
-            
+
         if not info:
             print(f"[DEBUG] No video info available for metadata embedding")
             return False
-            
-        # Extract metadata from yt-dlp info
+
+        # Extract metadata from info dict
         title = info.get('title', 'Downloaded Video')
         description = info.get('description', '')
         uploader = info.get('uploader') or info.get('channel') or info.get('uploader_id')
-        webpage_url = info.get('webpage_url', source_url)
+        # Prefer our source_url (which comes from referrer/page URL) over yt-dlp's webpage_url
+        # (which for generic/HLS downloads is the CDN URL, not the artist's page)
+        webpage_url = source_url or info.get('webpage_url', '')
+        print(f"[DEBUG] embed_video_metadata_if_requested:")
+        print(f"[DEBUG]   source_url param: {source_url}")
+        print(f"[DEBUG]   info.get('webpage_url'): {info.get('webpage_url', 'N/A')}")
+        print(f"[DEBUG]   webpage_url result: {webpage_url}")
+
+        # For generic/HLS downloads, yt-dlp returns useless titles like "playlist".
+        # Use our download title from the current_download_info if available.
+        if title.lower() in ('playlist', 'master', 'index', 'video', 'downloaded video'):
+            our_title = self.current_download_info.get('title') if self.current_download_info else None
+            if our_title:
+                title = our_title
+                print(f"[DEBUG] Overriding useless yt-dlp title with our title: {title}")
         
         # Truncate description if too long (metadata fields have limits)
         if description and len(description) > 500:
@@ -647,10 +686,13 @@ class DownloadWorker(QThread):
                         video_dir = Path(save_path)
                     video_dir.mkdir(parents=True, exist_ok=True)
                     
-                    # Generate filename
+                    # Generate filename - sanitize title for filesystem safety
                     parsed = urlparse(download['url'])
                     ext = os.path.splitext(parsed.path)[1] or '.mp4'
-                    filename = f"{title}{ext}"
+                    safe_title = re.sub(r'[<>:"/\\|?*]', '-', title).strip().rstrip('.')
+                    if not safe_title:
+                        safe_title = 'video'
+                    filename = f"{safe_title}{ext}"
                     
                     filepath = video_dir / filename
                     
@@ -665,7 +707,7 @@ class DownloadWorker(QThread):
                     
                     # Download with requests
                     headers = {
-                        'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36',
+                        'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36',
                         'Accept': 'video/*,*/*;q=0.8',
                         'Accept-Language': 'en-US,en;q=0.9',
                         'Accept-Encoding': 'gzip, deflate, br',
@@ -714,20 +756,34 @@ class DownloadWorker(QThread):
                         
                         print(f"[DEBUG] Direct-video encoding decision: needs_encoding={needs_encoding}, encode_vp9={encode_setting}")
                         
+                        # Use referrer (page URL) as source for metadata — more useful than CDN URL
+                        source_url = referrer or download['url']
+
                         if needs_encoding and encode_setting:
                             print(f"[DEBUG] ✓ Queuing encoding for direct-video: {filepath}")
                             # Emit encoding_needed signal - EncodingWorker will handle the actual encoding
-                            # For direct-video, no yt-dlp info is available
+                            # Build info dict with what we have for direct-video downloads
+                            direct_video_info = {
+                                'title': title,
+                                'webpage_url': source_url,
+                            }
                             metadata_info = {
                                 'metadata_option': metadata_option,
-                                'info': None,
-                                'source_url': download['url']
+                                'info': direct_video_info,
+                                'source_url': source_url
                             }
                             keep_original = download.get('keep_original', False)
                             self.encoding_needed.emit(self.current_download_id, str(filepath), keep_original, metadata_info)
                             # Don't emit download_complete - EncodingWorker will emit encoding_complete when done
                         else:
                             print(f"[DEBUG] ✗ Skipping encoding for direct-video: needs_encoding={needs_encoding}, encode_vp9={encode_setting}")
+                            # Embed metadata if requested
+                            direct_video_info = {
+                                'title': title,
+                                'webpage_url': source_url,
+                            }
+                            self.embed_video_metadata_if_requested(
+                                str(filepath), metadata_option, direct_video_info, source_url)
                             self.download_complete.emit(download['id'], str(filepath))
                 else:
                     # Download video with yt-dlp
@@ -798,7 +854,13 @@ class DownloadWorker(QThread):
                         'no_warnings': True,
                         'overwrites': False,
                         'http_headers': {
-                            'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
+                            'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36'
+                        },
+                        # Fix for Squarespace HLS: ffmpeg rejects segment URLs without file
+                        # extensions (e.g. .../mpegts-h264-1920:1080). -extension_picky 0 disables
+                        # the strict extension check on HLS segments.
+                        'external_downloader_args': {
+                            'ffmpeg_i': ['-allowed_extensions', 'ALL', '-extension_picky', '0']
                         }
                     }
                     
@@ -809,6 +871,14 @@ class DownloadWorker(QThread):
                         print(f"[DEBUG] Added Referer header: {referrer}")
                     else:
                         print(f"[DEBUG] No referrer provided")
+
+                    # For metadata: prefer referrer (page URL) over CDN URL
+                    metadata_source_url = referrer or download['url']
+                    print(f"[DEBUG] Metadata source URL computation:")
+                    print(f"[DEBUG]   download.get('referrer'): {download.get('referrer')}")
+                    print(f"[DEBUG]   download.get('pageUrl'): {download.get('pageUrl')}")
+                    print(f"[DEBUG]   download['url']: {download['url']}")
+                    print(f"[DEBUG]   metadata_source_url result: {metadata_source_url}")
                     
                     # Use browser cookies for Instagram to avoid rate limiting
                     if 'instagram.com' in download['url']:
@@ -905,6 +975,12 @@ class DownloadWorker(QThread):
                     # Check if video needs encoding
                     needs_encoding = needs_encoding_check(info)
                     print(f"[DEBUG] yt-dlp video encoding check complete: needs_encoding={needs_encoding}")
+
+                    # Check if yt-dlp's title is useless (generic/HLS sources)
+                    ytdlp_title_is_useless = (
+                        info.get('extractor', '').lower() == 'generic' and
+                        info.get('title', '').lower() in ('playlist', 'master', 'index', 'video', '')
+                    )
                     
                     # For Instagram, try multiple ways to get username
                     instagram_username = None
@@ -969,15 +1045,27 @@ class DownloadWorker(QThread):
                             folder = 'YouTube'
                         elif 'vimeo' in extractor.lower():
                             folder = 'Vimeo'
+                        elif extractor.lower() == 'generic':
+                            folder = 'web-videos'
                         else:
                             folder = extractor
-                        
+
                         if organize_by_platform:
                             extractor_path = str(Path(save_path) / folder)
                         else:
                             extractor_path = save_path
-                        
-                        base_filename = '%(title).100s'
+
+                        # Use our title for HLS/generic URLs where yt-dlp returns useless
+                        # names like "playlist" or "master". For known platforms (YouTube, Vimeo),
+                        # yt-dlp extracts good titles so we keep %(title)s.
+                        our_title = download.get('title')
+
+                        if our_title and ytdlp_title_is_useless:
+                            safe_title = re.sub(r'[<>:"/\\|?*]', '-', our_title).strip().rstrip('.')
+                            base_filename = safe_title or '%(title).100s'
+                            print(f"[DEBUG] Using extension-provided title for filename: {base_filename}")
+                        else:
+                            base_filename = '%(title).100s'
                         
                         # Configure paths and output templates
                         if metadata_option == 'sidecar':
@@ -1274,7 +1362,8 @@ class DownloadWorker(QThread):
                                         metadata_info = {
                                             'metadata_option': download.get('metadata_option'),
                                             'info': info,
-                                            'source_url': download.get('url')
+                                            'source_url': metadata_source_url,
+                                            'title_override': download.get('title') if ytdlp_title_is_useless else None
                                         }
                                         keep_original = download.get('keep_original', False)
                                         self.encoding_needed.emit(self.current_download_id, file_path, keep_original, metadata_info)
@@ -1282,7 +1371,7 @@ class DownloadWorker(QThread):
                                     else:
                                         # Embed metadata directly (no encoding needed)
                                         self.embed_video_metadata_if_requested(
-                                            file_path, download.get('metadata_option'), info, download.get('url'))
+                                            file_path, download.get('metadata_option'), info, metadata_source_url)
 
                                 if not any_encoding_queued:
                                     print(f"[DEBUG] ===== EMITTING DOWNLOAD_COMPLETE (PLAYLIST) =====")
@@ -1405,7 +1494,8 @@ Possible Causes:
                                     metadata_info = {
                                         'metadata_option': download.get('metadata_option'),
                                         'info': info,
-                                        'source_url': download.get('url')
+                                        'source_url': metadata_source_url,
+                                        'title_override': download.get('title') if ytdlp_title_is_useless else None
                                     }
                                     keep_original = download.get('keep_original', False)
                                     self.encoding_needed.emit(self.current_download_id, final_path, keep_original, metadata_info)
@@ -1413,7 +1503,7 @@ Possible Causes:
                                 else:
                                     print(f"[DEBUG] ✗ Skipping encoding for yt-dlp video: needs_encoding={needs_encoding}, encode_vp9={encode_setting}")
                                     # Embed metadata if requested
-                                    self.embed_video_metadata_if_requested(final_path, download.get('metadata_option'), info, download.get('url'))
+                                    self.embed_video_metadata_if_requested(final_path, download.get('metadata_option'), info, metadata_source_url)
                                     print(f"[DEBUG] ===== EMITTING DOWNLOAD_COMPLETE =====")
                                     print(f"[DEBUG] Download ID: {self.current_download_id}")
                                     print(f"[DEBUG] Path: {final_path}")
