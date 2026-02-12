@@ -2,25 +2,19 @@
 browser.contextMenus.create({
   id: "pick-images",
   title: "🖼️  Pick Images (ESC to stop)",
-  contexts: ["page"]
+  contexts: ["all"]
 });
 
 browser.contextMenus.create({
   id: "download-video",
   title: "🔗  Download Media (works with platform URLs)",
-  contexts: ["page", "link", "video"]
-});
-
-browser.contextMenus.create({
-  id: "download-image", 
-  title: "🔗  Download Media (works with platform URLs)",
-  contexts: ["image"]
+  contexts: ["all"]
 });
 
 browser.contextMenus.create({
   id: "scrape-videos",
   title: "🔎  Extract Direct Videos (scrapes page source)",
-  contexts: ["page"]
+  contexts: ["all"]
 });
 
 // Function to detect video embeds (Vimeo and YouTube) on a page
@@ -907,20 +901,6 @@ browser.contextMenus.onClicked.addListener((info, tab) => {
 
   if (info.menuItemId === "download-video") {
     triggerVideoDownload(tab, info);
-  }
-  
-  else if (info.menuItemId === "download-image") {
-    console.log('[DEBUG] ====== DOWNLOAD IMAGE ======');
-    console.log('[DEBUG] Image URL:', info.srcUrl);
-    console.log('[DEBUG] Page URL:', info.pageUrl);
-
-    sendToNativeApp({
-      type: 'image',
-      url: info.srcUrl,
-      thumbnail: info.srcUrl,  // For images, use the image itself as thumbnail
-      pageUrl: info.pageUrl,
-      source: new URL(info.pageUrl).hostname
-    });
   }
   
   else if (info.menuItemId === "pick-images") {

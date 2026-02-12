@@ -202,10 +202,16 @@
   }
 
   // Find all images at a point (for layered images)
-  function findImagesAtPoint(x, y) {
+  function findImagesAtPoint(x, y, clickTarget) {
     const elements = document.elementsFromPoint(x, y);
     const images = [];
-    
+
+    // Check if the click target is an <img> or has a direct <img> child
+    const clickedImg = clickTarget && (
+      clickTarget.tagName === 'IMG' ? clickTarget :
+      clickTarget.querySelector && clickTarget.querySelector('img')
+    );
+
     for (const el of elements) {
       const url = extractImageURL(el);
       // Skip empty URLs or data URLs (often just transparent overlays)
@@ -217,7 +223,18 @@
         });
       }
     }
-    
+
+    // If an actual <img> was clicked, hide background entries (they're just parent containers)
+    if (clickedImg) {
+      const imgOnly = images.filter(img => img.type === 'img');
+      if (imgOnly.length > 0) {
+        return imgOnly;
+      }
+    }
+
+    // Sort: img entries first, then background
+    images.sort((a, b) => (a.type === 'img' ? 0 : 1) - (b.type === 'img' ? 0 : 1));
+
     return images;
   }
 
@@ -300,7 +317,7 @@
     e.preventDefault();
     e.stopPropagation();
     
-    const images = findImagesAtPoint(e.clientX, e.clientY);
+    const images = findImagesAtPoint(e.clientX, e.clientY, e.target);
     
     // Filter out placeholder images before showing selector
     const validImages = images.filter(img => {
