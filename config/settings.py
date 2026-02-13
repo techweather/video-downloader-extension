@@ -26,6 +26,8 @@ class Settings:
             'keep_original': False,
             'organize_by_platform': True,
             'metadata_option': 'none',
+            'show_in_tray': True,
+            'tray_minimize_notified': False,
             'window_geometry': {
                 'x': None,  # Will be set to top-right corner by default
                 'y': None,

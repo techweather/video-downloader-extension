@@ -332,6 +332,41 @@ class MainWindow(QMainWindow):
         organization_row.addWidget(self.metadata_combo)
         organization_row.addStretch()
         
+        # System tray settings row
+        tray_row = QHBoxLayout()
+
+        self.show_tray_checkbox = QCheckBox("Show in system tray")
+        self.show_tray_checkbox.setChecked(self.settings.get('show_in_tray', True))
+        self.show_tray_checkbox.toggled.connect(self.toggle_tray_visibility)
+        self.show_tray_checkbox.setStyleSheet("""
+            QCheckBox {
+                color: #333;
+                spacing: 8px;
+            }
+            QCheckBox::indicator {
+                width: 18px;
+                height: 18px;
+                border: 2px solid #666;
+                border-radius: 3px;
+                background-color: #fff;
+            }
+            QCheckBox::indicator:checked {
+                background-color: #3498db;
+                border-color: #2980b9;
+                image: url(data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iMTAiIGhlaWdodD0iNyIgdmlld0JveD0iMCAwIDEwIDciIGZpbGw9Im5vbmUiIHhtbG5zPSJodHRwOi8vd3d3LnczLm9yZy8yMDAwL3N2ZyI+CjxwYXRoIGQ9Ik04LjUgMS41TDMuNSA2LjVMMSA0IiBzdHJva2U9IndoaXRlIiBzdHJva2Utd2lkdGg9IjIiIHN0cm9rZS1saW5lY2FwPSJyb3VuZCIgc3Ryb2tlLWxpbmVqb2luPSJyb3VuZCIvPgo8L3N2Zz4K);
+            }
+            QCheckBox::indicator:unchecked {
+                background-color: #f8f9fa;
+                border-color: #666;
+            }
+            QCheckBox::indicator:hover {
+                border-color: #3498db;
+            }
+        """)
+
+        tray_row.addWidget(self.show_tray_checkbox)
+        tray_row.addStretch()
+
         # yt-dlp version and update status (single line, no button by default)
         update_row = QHBoxLayout()
 
@@ -351,6 +386,7 @@ class MainWindow(QMainWindow):
         # Assemble settings layout
         settings_layout.addLayout(encoding_row)
         settings_layout.addLayout(organization_row)
+        settings_layout.addLayout(tray_row)
         settings_layout.addLayout(update_row)
 
         settings_widget.setLayout(settings_layout)
@@ -515,7 +551,7 @@ class MainWindow(QMainWindow):
         # Create tray menu
         tray_menu = QMenu()
         show_action = QAction("Show", self)
-        show_action.triggered.connect(self.show)
+        show_action.triggered.connect(lambda: bring_window_to_front(self))
         quit_action = QAction("Quit", self)
         quit_action.triggered.connect(self.quit_application)
 
@@ -524,7 +560,12 @@ class MainWindow(QMainWindow):
         tray_menu.addAction(quit_action)
 
         self.tray_icon.setContextMenu(tray_menu)
-        self.tray_icon.show()
+
+        # Show/hide tray based on setting
+        if self.settings.get('show_in_tray', True):
+            self.tray_icon.show()
+        else:
+            self.tray_icon.hide()
 
         # Connect tray activation
         self.tray_icon.activated.connect(self.tray_activated)
@@ -541,6 +582,15 @@ class MainWindow(QMainWindow):
         print("[DEBUG] Workers stopped, quitting application")
         QApplication.quit()
     
+    def toggle_tray_visibility(self, checked):
+        """Toggle system tray icon visibility based on checkbox"""
+        self.settings['show_in_tray'] = checked
+        Settings.save(self.settings)
+        if checked:
+            self.tray_icon.show()
+        else:
+            self.tray_icon.hide()
+
     def _check_ytdlp_version(self):
         """Spawn a background thread to check for yt-dlp updates."""
         self._version_check_worker = VersionCheckWorker()
@@ -599,14 +649,12 @@ class MainWindow(QMainWindow):
             self.ytdlp_status_label.setStyleSheet("color: #e67e22; font-size: 12px; font-style: normal;")
 
     def tray_activated(self, reason):
-        """Handle system tray icon activation"""
+        """Handle system tray icon activation (single-click toggle, works on Windows/Linux)"""
         if reason == QSystemTrayIcon.Trigger:
-            if self.isVisible():
+            if self.isVisible() and not self.isMinimized():
                 self.hide()
             else:
-                self.show()
-                self.raise_()
-                self.activateWindow()
+                bring_window_to_front(self)
     
     def get_current_save_path(self):
         """
@@ -1441,15 +1489,32 @@ class MainWindow(QMainWindow):
         self._resize_timer.start(500)  # Save after 500ms of no resizing
     
     def closeEvent(self, event):
-        """Handle window close event (minimize to tray instead of quit)"""
+        """Handle window close event (minimize to tray if enabled, otherwise quit)"""
         # Save window position and size before hiding
         self.save_window_geometry()
-        
-        event.ignore()
-        self.hide()
+
+        if self.settings.get('show_in_tray', True) and self.tray_icon.isVisible():
+            # Minimize to tray
+            event.ignore()
+            self.hide()
+
+            # Show one-time notification that app is still running
+            # Use a short delay so the notification fires after the hide completes
+            if not self.settings.get('tray_minimize_notified', False):
+                from PyQt5.QtCore import QTimer
+                QTimer.singleShot(500, self._show_tray_minimize_notification)
+        else:
+            # Tray disabled — actually quit
+            event.accept()
+            self.quit_application()
+
+    def _show_tray_minimize_notification(self):
+        """Show one-time notification that app is still running in tray"""
         self.tray_icon.showMessage(
             "dlwithit",
-            "Application minimized to tray",
+            "dlwithit is still running in the system tray",
             QSystemTrayIcon.Information,
-            1000
+            3000
         )
+        self.settings['tray_minimize_notified'] = True
+        Settings.save(self.settings)
