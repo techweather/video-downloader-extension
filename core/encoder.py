@@ -28,8 +28,6 @@ def needs_encoding_check(video_info_or_path) -> bool:
     if isinstance(video_info_or_path, str):
         filepath = video_info_or_path.lower()
         needs_encoding = filepath.endswith('.webm')
-        print(f"[DEBUG] Encoding check (file path): {video_info_or_path}")
-        print(f"[DEBUG] File extension check: .webm = {needs_encoding}")
         return needs_encoding
     
     # Handle dictionary input (for yt-dlp downloads)
@@ -38,7 +36,6 @@ def needs_encoding_check(video_info_or_path) -> bool:
     acodec = str(video_info.get('acodec', '')).lower()
     ext = str(video_info.get('ext', '')).lower()
     
-    print(f"[DEBUG] Encoding check (video info): vcodec='{vcodec}', acodec='{acodec}', ext='{ext}'")
     
     # Check individual conditions
     conditions = [
@@ -57,12 +54,6 @@ def needs_encoding_check(video_info_or_path) -> bool:
         if condition_result:
             matching_conditions.append(condition_name)
             needs_encoding = True
-    
-    print(f"[DEBUG] Encoding needed: {needs_encoding}")
-    if matching_conditions:
-        print(f"[DEBUG] Matching conditions: {', '.join(matching_conditions)}")
-    else:
-        print(f"[DEBUG] No encoding conditions matched")
     
     return needs_encoding
 
@@ -155,12 +146,8 @@ class VideoEncoder:
             
             if self.active_process.returncode == 0:
                 # Encoding successful
-                print(f"[DEBUG] Encoding completed successfully: {output_path}")
                 if not keep_original:
-                    print(f"[DEBUG] Removing original file (keep_original=False): {input_path}")
                     os.remove(input_path)
-                else:
-                    print(f"[DEBUG] Keeping original file (keep_original=True): {input_path}")
                 return output_path
             else:
                 # Encoding failed
@@ -258,7 +245,6 @@ class EncodingWorker(QThread):
             'keep_original': keep_original,
             'metadata_info': metadata_info or {}
         }
-        print(f"[DEBUG] EncodingWorker: Adding job for {download_id}: {input_path}")
         self.encoding_queue.put(job)
 
     def cancel_job(self, download_id: str):
@@ -279,11 +265,9 @@ class EncodingWorker(QThread):
             keep_original = job['keep_original']
             metadata_info = job.get('metadata_info', {})
 
-            print(f"[DEBUG] EncodingWorker: Starting job {download_id}")
 
             # Check if cancelled before starting
             if download_id in self.cancelled_jobs:
-                print(f"[DEBUG] EncodingWorker: Job {download_id} was cancelled before starting")
                 self.cancelled_jobs.discard(download_id)
                 self.encoding_cancelled.emit(download_id)
                 continue
@@ -303,7 +287,6 @@ class EncodingWorker(QThread):
                 )
 
                 if download_id in self.cancelled_jobs:
-                    print(f"[DEBUG] EncodingWorker: Job {download_id} was cancelled during encoding")
                     self.cancelled_jobs.discard(download_id)
                     # If cancelled, use original file if it exists
                     if os.path.exists(input_path):
@@ -311,13 +294,11 @@ class EncodingWorker(QThread):
                     else:
                         self.encoding_cancelled.emit(download_id)
                 elif encoded_path:
-                    print(f"[DEBUG] EncodingWorker: Job {download_id} completed: {encoded_path}")
                     # Embed metadata if requested
                     self._embed_metadata_if_requested(encoded_path, metadata_info)
                     self.encoding_complete.emit(download_id, encoded_path)
                 else:
                     # Encoding failed - use original file as fallback
-                    print(f"[DEBUG] EncodingWorker: Job {download_id} failed, using original file")
                     if os.path.exists(input_path):
                         self._embed_metadata_if_requested(input_path, metadata_info)
                         self.encoding_complete.emit(download_id, input_path)
@@ -325,7 +306,6 @@ class EncodingWorker(QThread):
                         self.encoding_error.emit(download_id, "Encoding failed and original file not found")
 
             except Exception as e:
-                print(f"[DEBUG] EncodingWorker: Job {download_id} exception: {e}")
                 # On error, try to use original file
                 if os.path.exists(input_path):
                     self.encoding_complete.emit(download_id, input_path)
@@ -350,7 +330,6 @@ class EncodingWorker(QThread):
         source_url = metadata_info.get('source_url', '')
 
         if not info:
-            print(f"[DEBUG] EncodingWorker: No video info available for metadata embedding")
             return
 
         # Extract metadata from yt-dlp info
@@ -370,10 +349,6 @@ class EncodingWorker(QThread):
         if description and len(description) > 500:
             description = description[:497] + "..."
 
-        print(f"[DEBUG] EncodingWorker: Embedding metadata into video: {Path(filepath).name}")
-        print(f"[DEBUG] Title: {title}")
-        print(f"[DEBUG] Uploader: {uploader}")
-        print(f"[DEBUG] Source: {webpage_url}")
 
         try:
             embed_success = embed_video_metadata(
@@ -384,12 +359,8 @@ class EncodingWorker(QThread):
                 uploader=uploader
             )
 
-            if embed_success:
-                print(f"[DEBUG] EncodingWorker: ✓ Successfully embedded metadata")
-            else:
-                print(f"[DEBUG] EncodingWorker: ✗ Failed to embed metadata")
-        except Exception as e:
-            print(f"[DEBUG] EncodingWorker: Metadata embedding failed: {e}")
+        except Exception:
+            pass
 
     def stop(self):
         """Stop the encoding worker"""

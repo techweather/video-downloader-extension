@@ -154,19 +154,16 @@ class DownloadItem(QWidget):
         Args:
             url: URL of the thumbnail image to load
         """        
-        print(f"[DEBUG] Loading thumbnail from: {url}")
         
         def fetch_and_update():
             """Fetch thumbnail data and schedule UI update"""
             try:
                 response = requests.get(url, timeout=5)
-                print(f"[DEBUG] Thumbnail response status: {response.status_code}")
                 
                 if response.status_code == 200:
                     # Load image data directly in the worker thread
                     pixmap = QPixmap()
                     success = pixmap.loadFromData(response.content)
-                    print(f"[DEBUG] Pixmap loaded: {success}, size: {pixmap.size()}")
                     
                     if success and not pixmap.isNull():
                         # Scale the pixmap to fit thumbnail container
@@ -176,11 +173,8 @@ class DownloadItem(QWidget):
                         self.thumbnail_pixmap = scaled_pixmap
                         # Schedule UI update in main thread
                         QTimer.singleShot(0, self.update_thumbnail_ui)
-                    else:
-                        print("[DEBUG] Pixmap is null or failed to load")
-                        
-            except Exception as e:
-                print(f"[DEBUG] Thumbnail loading error: {e}")
+            except Exception:
+                pass
         
         # Start thumbnail loading in background thread
         Thread(target=fetch_and_update, daemon=True).start()
@@ -197,7 +191,6 @@ class DownloadItem(QWidget):
             self.thumbnail_label.resize(self.thumbnail_pixmap.size())
             self.thumbnail_label.move(x, y)
             self.thumbnail_label.setPixmap(self.thumbnail_pixmap)
-            print("[DEBUG] Thumbnail UI updated")
     
     def set_downloading(self):
         """Update UI to show download in progress state"""

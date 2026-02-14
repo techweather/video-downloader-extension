@@ -26,7 +26,6 @@ class YtDlpLogger:
     def debug(self, msg):
         # Capture "already downloaded" messages
         if 'has already been downloaded' in msg.lower():
-            print(f"[DEBUG] YtDlpLogger captured skip message: {msg}")
             self.skipped = True
             self.skip_reason = msg
             # Try to extract filename from message
@@ -35,7 +34,6 @@ class YtDlpLogger:
                 parts = msg.split(' has already been downloaded')
                 if parts:
                     self.skipped_filename = parts[0].replace('[download]', '').strip()
-                    print(f"[DEBUG] YtDlpLogger extracted filename: {self.skipped_filename}")
 
     def warning(self, msg):
         pass
@@ -45,7 +43,6 @@ class YtDlpLogger:
 
     def reset(self):
         """Reset state for a new download."""
-        print(f"[DEBUG] YtDlpLogger.reset() called - clearing skip state (was skipped={self.skipped})")
         self.skipped = False
         self.skip_reason = None
         self.skipped_filename = None
@@ -89,8 +86,6 @@ class DownloadWorker(QThread):
     
     def cleanup_partial_files(self, download_id):
         """Clean up any partial files for a cancelled download"""
-        print(f"[DEBUG] Starting cleanup for download {download_id}")
-        print(f"[DEBUG] Tracked partial files: {list(self.partial_files)}")
         
         # Get current download info for directory scanning
         download_info = getattr(self, 'current_download_info', {})
@@ -106,20 +101,17 @@ class DownloadWorker(QThread):
                 if os.path.exists(filepath):
                     os.remove(filepath)
                     cleaned_count += 1
-                    print(f"[DEBUG] Removed tracked file: {filepath}")
                 else:
-                    print(f"[DEBUG] Tracked file not found: {filepath}")
+                    pass
             except Exception as e:
-                print(f"[DEBUG] Could not remove tracked file {filepath}: {e}")
+                pass
         
         # Additional cleanup for yt-dlp fragment files
         self._cleanup_ytdlp_fragments(save_path)
         
-        print(f"[DEBUG] Cleanup complete - removed {cleaned_count} tracked files")
     
     def _cleanup_ytdlp_fragments(self, base_path):
         """Clean up yt-dlp fragment files and temporary files"""
-        print(f"[DEBUG] Scanning for yt-dlp fragments in: {base_path}")
         
         try:
             base_dir = Path(base_path)
@@ -140,7 +132,6 @@ class DownloadWorker(QThread):
             
             # Look in all subdirectories (Instagram, YouTube, etc.)
             for search_dir in [base_dir] + [d for d in base_dir.iterdir() if d.is_dir()]:
-                print(f"[DEBUG] Scanning directory: {search_dir}")
                 
                 for pattern in patterns:
                     try:
@@ -154,29 +145,22 @@ class DownloadWorker(QThread):
                                     try:
                                         file_path.unlink()
                                         fragment_count += 1
-                                        print(f"[DEBUG] Removed fragment/temp file: {file_path}")
-                                    except Exception as e:
-                                        print(f"[DEBUG] Could not remove fragment {file_path}: {e}")
+                                    except Exception:
+                                        pass
                                 else:
-                                    print(f"[DEBUG] Skipping old file: {file_path} (age: {file_age:.1f}s)")
-                    except Exception as e:
-                        print(f"[DEBUG] Error scanning pattern {pattern}: {e}")
-            
-            print(f"[DEBUG] Removed {fragment_count} fragment/temp files")
-            
-        except Exception as e:
-            print(f"[DEBUG] Error during fragment cleanup: {e}")
+                                    pass
+                    except Exception:
+                        pass
+
+        except Exception:
+            pass
     
     def progress_hook(self, d):
         # Check if cancelled
         if self.current_download_id in self.cancelled_downloads:
-            print(f"[DEBUG] Cancellation detected in progress hook for {self.current_download_id}")
             raise Exception("Download cancelled by user")
 
         # Log progress hook calls to help debug skip issues
-        if d['status'] == 'finished':
-            print(f"[DEBUG] Progress hook: status=finished for download_id={self.current_download_id}")
-
         if d['status'] == 'downloading':
             # Emit 'downloading' status on first actual progress
             if not self.has_emitted_downloading_status:
@@ -273,16 +257,6 @@ class DownloadWorker(QThread):
         info_dict = d.get('info_dict', {})
 
         # Comprehensive debug logging
-        print(f"[DEBUG] ===== POSTPROCESSOR HOOK CALLED =====")
-        print(f"[DEBUG]   status: {status}")
-        print(f"[DEBUG]   postprocessor: {postprocessor}")
-        print(f"[DEBUG]   d keys: {list(d.keys())}")
-        print(f"[DEBUG]   info_dict keys: {list(info_dict.keys())[:20]}...")  # First 20 keys
-        print(f"[DEBUG]   filepath: {info_dict.get('filepath')}")
-        print(f"[DEBUG]   filename: {info_dict.get('filename')}")
-        print(f"[DEBUG]   _filename: {info_dict.get('_filename')}")
-        print(f"[DEBUG]   ext: {info_dict.get('ext')}")
-        print(f"[DEBUG]   requested_downloads: {info_dict.get('requested_downloads')}")
 
         if status == 'started':
             # Detect what kind of postprocessing is happening
@@ -296,16 +270,13 @@ class DownloadWorker(QThread):
             # This is especially important after merging, as the output format may differ
             filepath = info_dict.get('filepath')
             if filepath:
-                print(f"[DEBUG] ✓ Postprocessor finished, capturing filepath: {filepath}")
                 self.final_filepath = filepath
             else:
                 # Try alternative keys
                 alt_filepath = info_dict.get('_filename') or info_dict.get('filename')
                 if alt_filepath:
-                    print(f"[DEBUG] ✓ Using alternative filepath key: {alt_filepath}")
                     self.final_filepath = alt_filepath
-                else:
-                    print(f"[DEBUG] ✗ No filepath found in postprocessor hook!")
+
     
     def download_image(self, url, download_id, save_path, organize_by_platform, referrer=None):
         """Download an image file"""
@@ -366,22 +337,14 @@ class DownloadWorker(QThread):
             if not referrer:
                 header_strategies = header_strategies[:2]
 
-            print(f"[DEBUG] download_image() called:")
-            print(f"[DEBUG]   URL: {url}")
-            print(f"[DEBUG]   Referrer received: {referrer}")
 
             response = None
             for i, headers in enumerate(header_strategies):
-                print(f"[DEBUG]   Trying header strategy {i + 1}/{len(header_strategies)}: {list(headers.keys())}")
                 response = requests.get(url, stream=True, headers=headers, timeout=30)
-                print(f"[DEBUG]   Strategy {i + 1} response status: {response.status_code}")
 
                 if response.status_code != 403:
                     break
-                print(f"[DEBUG]   Got 403, trying next strategy...")
 
-            print(f"[DEBUG]   Final response status: {response.status_code}")
-            print(f"[DEBUG]   Response headers: {dict(response.headers)}")
 
             response.raise_for_status()
             
@@ -423,12 +386,10 @@ class DownloadWorker(QThread):
             self.progress_update.emit(download_id, percent, status)
         
         keep_original = self.current_download_info.get('keep_original', False)
-        print(f"[DEBUG] Encoding with keep_original={keep_original} for file: {input_path}")
         return self.encoder.encode_to_h264(input_path, keep_original, progress_callback)
     
     def extract_vimeo_id(self, url, error_message=None):
         """Extract Vimeo video ID from URL, error message, or page HTML"""
-        print(f"[DEBUG] Extracting Vimeo ID from URL: {url}")
         
         # Pattern 1: Direct Vimeo URL patterns
         vimeo_patterns = [
@@ -438,20 +399,14 @@ class DownloadWorker(QThread):
             r'vimeo\.com/groups/[^/]+/videos/(\d+)',
         ]
         
-        print(f"[DEBUG] Trying {len(vimeo_patterns)} URL patterns on: {url}")
         for i, pattern in enumerate(vimeo_patterns):
-            print(f"[DEBUG] Pattern {i+1}: {pattern}")
             match = re.search(pattern, url)
             if match:
                 video_id = match.group(1)
-                print(f"[DEBUG] ✓ Found Vimeo ID from URL pattern {i+1}: {video_id}")
                 return video_id
-        print(f"[DEBUG] ✗ No matches in URL patterns")
         
         # Pattern 2: Check error message for embedded IDs
         if error_message:
-            print(f"[DEBUG] Checking error message for Vimeo ID")
-            print(f"[DEBUG] Error message: {error_message[:200]}...")
             error_patterns = [
                 r'\[vimeo\]\s*(\d+)',  # Matches '[vimeo] 1108703340' format
                 r'video/(\d+)',
@@ -460,16 +415,11 @@ class DownloadWorker(QThread):
             ]
             
             for i, pattern in enumerate(error_patterns):
-                print(f"[DEBUG] Error pattern {i+1}: {pattern}")
                 match = re.search(pattern, error_message)
                 if match:
                     video_id = match.group(1)
-                    print(f"[DEBUG] ✓ Found Vimeo ID from error pattern {i+1}: {video_id}")
                     return video_id
-            print(f"[DEBUG] ✗ No matches in error patterns")
-        else:
-            print(f"[DEBUG] No error message provided for pattern matching")
-        
+
         # Pattern 3: Fetch page HTML and extract ID
         try:
             referrer = self.current_download_info.get('referrer')
@@ -480,15 +430,11 @@ class DownloadWorker(QThread):
                 elif not referrer.startswith(('http://', 'https://')):
                     referrer = 'https://' + referrer
                 
-                print(f"[DEBUG] Fetching page HTML from referrer: {referrer}")
                 headers = {
                     'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36',
                 }
                 response = requests.get(referrer, headers=headers, timeout=10)
-                print(f"[DEBUG] HTTP response status: {response.status_code}")
                 html_content = response.text
-                print(f"[DEBUG] Page content length: {len(html_content)} characters")
-                print(f"[DEBUG] Page content sample: {html_content[:300]}...")
                 
                 # Look for Vimeo IDs in HTML
                 html_patterns = [
@@ -500,28 +446,18 @@ class DownloadWorker(QThread):
                     r'vimeo_video_id["\']?\s*:\s*["\']?(\d+)["\']?',
                 ]
                 
-                print(f"[DEBUG] Searching HTML with {len(html_patterns)} patterns")
                 for i, pattern in enumerate(html_patterns):
-                    print(f"[DEBUG] HTML pattern {i+1}: {pattern}")
                     match = re.search(pattern, html_content, re.IGNORECASE)
                     if match:
                         video_id = match.group(1)
-                        print(f"[DEBUG] ✓ Found Vimeo ID from HTML pattern {i+1}: {video_id}")
                         # Show context around the match
                         match_start = max(0, match.start() - 50)
                         match_end = min(len(html_content), match.end() + 50)
                         context = html_content[match_start:match_end]
-                        print(f"[DEBUG] Match context: ...{context}...")
                         return video_id
-                print(f"[DEBUG] ✗ No matches in HTML patterns")
-            else:
-                print(f"[DEBUG] No referrer URL available for HTML fetching")
-        except Exception as e:
-            print(f"[DEBUG] ✗ Failed to fetch page HTML: {e}")
-            import traceback
-            print(f"[DEBUG] HTML fetch traceback: {traceback.format_exc()}")
-        
-        print(f"[DEBUG] ✗ No Vimeo ID found through any method")
+        except Exception:
+            pass
+
         return None
     
     def is_vimeo_embed_error(self, error_message, url):
@@ -549,7 +485,6 @@ class DownloadWorker(QThread):
         has_vimeo = any(vimeo_indicators)
         has_access_error = any(access_errors)
         
-        print(f"[DEBUG] Vimeo embed error check - Vimeo: {has_vimeo}, Access error: {has_access_error}")
         return has_vimeo and has_access_error
     
     def embed_video_metadata_if_requested(self, filepath, metadata_option, info, source_url):
@@ -569,7 +504,6 @@ class DownloadWorker(QThread):
             return False
 
         if not info:
-            print(f"[DEBUG] No video info available for metadata embedding")
             return False
 
         # Extract metadata from info dict
@@ -579,10 +513,6 @@ class DownloadWorker(QThread):
         # Prefer our source_url (which comes from referrer/page URL) over yt-dlp's webpage_url
         # (which for generic/HLS downloads is the CDN URL, not the artist's page)
         webpage_url = source_url or info.get('webpage_url', '')
-        print(f"[DEBUG] embed_video_metadata_if_requested:")
-        print(f"[DEBUG]   source_url param: {source_url}")
-        print(f"[DEBUG]   info.get('webpage_url'): {info.get('webpage_url', 'N/A')}")
-        print(f"[DEBUG]   webpage_url result: {webpage_url}")
 
         # For generic/HLS downloads, yt-dlp returns useless titles like "playlist".
         # Use our download title from the current_download_info if available.
@@ -590,16 +520,11 @@ class DownloadWorker(QThread):
             our_title = self.current_download_info.get('title') if self.current_download_info else None
             if our_title:
                 title = our_title
-                print(f"[DEBUG] Overriding useless yt-dlp title with our title: {title}")
         
         # Truncate description if too long (metadata fields have limits)
         if description and len(description) > 500:
             description = description[:497] + "..."
             
-        print(f"[DEBUG] Embedding metadata into video: {Path(filepath).name}")
-        print(f"[DEBUG] Title: {title}")
-        print(f"[DEBUG] Uploader: {uploader}")
-        print(f"[DEBUG] Source: {webpage_url}")
         
         # Embed metadata into video
         embed_success = embed_video_metadata(
@@ -610,11 +535,6 @@ class DownloadWorker(QThread):
             uploader=uploader
         )
         
-        if embed_success:
-            print(f"[DEBUG] ✓ Successfully embedded metadata into video: {Path(filepath).name}")
-        else:
-            print(f"[DEBUG] ✗ Failed to embed metadata into video: {Path(filepath).name}")
-            
         return True
     
     def run(self):
@@ -623,10 +543,6 @@ class DownloadWorker(QThread):
             if download is None:
                 break
             
-            print(f"[DEBUG] ===== NEW DOWNLOAD FROM QUEUE =====")
-            print(f"[DEBUG] Download ID: {download['id']}")
-            print(f"[DEBUG] Type: {download.get('type')}")
-            print(f"[DEBUG] URL: {download.get('url', '')[:80]}...")
 
             self.current_download_id = download['id']
             self.current_download_info = download  # Store for encoding options
@@ -664,11 +580,6 @@ class DownloadWorker(QThread):
                             source_url=download['url'],
                             page_title=page_title
                         )
-                        if embed_success:
-                            print(f"[DEBUG] Successfully embedded metadata into image: {Path(filepath).name}")
-                        else:
-                            print(f"[DEBUG] Failed to embed metadata into image: {Path(filepath).name}")
-                    
                     if self.current_download_id not in self.cancelled_downloads:
                         self.download_complete.emit(download['id'], filepath)
                 elif download['type'] == 'direct-video':
@@ -747,20 +658,15 @@ class DownloadWorker(QThread):
                     self.partial_files.discard(str(filepath))
                     if self.current_download_id not in self.cancelled_downloads:
                         # Check if direct-video file needs encoding
-                        print(f"[DEBUG] Direct-video download complete: {filepath}")
-                        print(f"[DEBUG] Download type: direct-video")
-                        print(f"[DEBUG] encode_vp9 setting: {download.get('encode_vp9', True)}")
                         
                         needs_encoding = needs_encoding_check(str(filepath))
                         encode_setting = download.get('encode_vp9', True)
                         
-                        print(f"[DEBUG] Direct-video encoding decision: needs_encoding={needs_encoding}, encode_vp9={encode_setting}")
                         
                         # Use referrer (page URL) as source for metadata — more useful than CDN URL
                         source_url = referrer or download['url']
 
                         if needs_encoding and encode_setting:
-                            print(f"[DEBUG] ✓ Queuing encoding for direct-video: {filepath}")
                             # Emit encoding_needed signal - EncodingWorker will handle the actual encoding
                             # Build info dict with what we have for direct-video downloads
                             direct_video_info = {
@@ -776,7 +682,6 @@ class DownloadWorker(QThread):
                             self.encoding_needed.emit(self.current_download_id, str(filepath), keep_original, metadata_info)
                             # Don't emit download_complete - EncodingWorker will emit encoding_complete when done
                         else:
-                            print(f"[DEBUG] ✗ Skipping encoding for direct-video: needs_encoding={needs_encoding}, encode_vp9={encode_setting}")
                             # Embed metadata if requested
                             direct_video_info = {
                                 'title': title,
@@ -787,17 +692,12 @@ class DownloadWorker(QThread):
                             self.download_complete.emit(download['id'], str(filepath))
                 else:
                     # Download video with yt-dlp
-                    print(f"[DEBUG] yt-dlp attempting URL: {download['url']}")
-                    print(f"[DEBUG] referrer: {download.get('referrer')}")
                     
                     # Skip playlist detection if this video came from a previous playlist selection
-                    if download.get('skip_playlist_detection'):
-                        print(f"[DEBUG] Skipping playlist detection - already processed")
-                    else:
+                    if not download.get('skip_playlist_detection'):
                         # Check if extension already detected multiple videos
                         detected_videos = download.get('detectedVideos')
                         if detected_videos and len(detected_videos) >= 2:
-                            print(f"[DEBUG] Extension detected {len(detected_videos)} videos, using those instead of yt-dlp extraction")
                             
                             # Format detected videos for video selector (same format as playlist entries)
                             videos = []
@@ -819,7 +719,6 @@ class DownloadWorker(QThread):
                                 'source': urlparse(download['url']).hostname or 'unknown'
                             }
                             
-                            print(f"[DEBUG] Emitting playlist_detected signal with {len(videos)} extension-detected videos")
                             self.playlist_detected.emit(download['id'], playlist_data)
                             
                             # Continue to next item in queue
@@ -868,29 +767,18 @@ class DownloadWorker(QThread):
                     referrer = download.get('referrer')
                     if referrer:
                         ydl_opts['http_headers']['Referer'] = referrer
-                        print(f"[DEBUG] Added Referer header: {referrer}")
-                    else:
-                        print(f"[DEBUG] No referrer provided")
 
                     # For metadata: prefer referrer (page URL) over CDN URL
                     metadata_source_url = referrer or download['url']
-                    print(f"[DEBUG] Metadata source URL computation:")
-                    print(f"[DEBUG]   download.get('referrer'): {download.get('referrer')}")
-                    print(f"[DEBUG]   download.get('pageUrl'): {download.get('pageUrl')}")
-                    print(f"[DEBUG]   download['url']: {download['url']}")
-                    print(f"[DEBUG]   metadata_source_url result: {metadata_source_url}")
                     
                     # Use browser cookies for Instagram to avoid rate limiting
                     if 'instagram.com' in download['url']:
                         ydl_opts['cookiesfrombrowser'] = ('firefox',)
-                        print(f"[DEBUG] Using Firefox cookies for Instagram")
                     
                     # Add playlist_items if this is a specific item from a carousel
                     playlist_index = download.get('playlist_index')
                     if playlist_index is not None:
                         ydl_opts['playlist_items'] = str(playlist_index)
-                        print(f"[DEBUG] Added playlist_items={playlist_index} for carousel item from {download['url']}")
-                        print(f"[DEBUG] ydl_opts keys now include: {list(ydl_opts.keys())}")
                     
                     # Add metadata options if enabled (sidecar files)
                     if metadata_option == 'sidecar':
@@ -917,19 +805,13 @@ class DownloadWorker(QThread):
                     except (yt_dlp.DownloadError, yt_dlp.utils.ExtractorError) as extract_error:
                         # Check if this is a Vimeo embed error that we can retry
                         error_str = str(extract_error)
-                        print(f"[DEBUG] Info extraction failed with error: {error_str[:500]}...")
                         
                         if self.is_vimeo_embed_error(error_str, download['url']):
-                            print(f"[DEBUG] ✓ Detected Vimeo embed error during info extraction, attempting fallback")
-                            print(f"[DEBUG] Original URL: {download['url']}")
-                            print(f"[DEBUG] Error type: {type(extract_error).__name__}")
                             
                             # Extract Vimeo ID and retry with direct URL
                             vimeo_id = self.extract_vimeo_id(download['url'], error_str)
                             if vimeo_id:
                                 fallback_url = f"https://vimeo.com/{vimeo_id}"
-                                print(f"[DEBUG] ✓ Extracted Vimeo ID: {vimeo_id}")
-                                print(f"[DEBUG] Retrying info extraction with direct Vimeo URL: {fallback_url}")
                                 
                                 try:
                                     # Update status to show retry
@@ -950,7 +832,6 @@ class DownloadWorker(QThread):
                                     with yt_dlp.YoutubeDL(fallback_ydl_opts) as ydl:
                                         info = ydl.extract_info(fallback_url, download=False)
                                     
-                                    print(f"[DEBUG] ✓ Vimeo info extraction fallback successful!")
                                     # Store the original URL before changing it
                                     if '_original_url' not in download:
                                         download['_original_url'] = download['url']
@@ -960,21 +841,15 @@ class DownloadWorker(QThread):
                                     
                                     # Mark that we used a Vimeo fallback - path configuration will happen normally
                                     download['_used_vimeo_fallback'] = True
-                                    print(f"[DEBUG] Marked as using Vimeo fallback - normal path config will apply")
                                 except Exception as fallback_error:
-                                    print(f"[DEBUG] ✗ Vimeo info extraction fallback also failed: {fallback_error}")
-                                    print(f"[DEBUG] Fallback error type: {type(fallback_error).__name__}")
                                     raise extract_error  # Re-raise original error
                             else:
-                                print(f"[DEBUG] ✗ Could not extract Vimeo ID for fallback")
                                 raise extract_error  # Re-raise original error
                         else:
-                            print(f"[DEBUG] Not a Vimeo embed error during info extraction, re-raising original error")
                             raise extract_error  # Re-raise original error
                     
                     # Check if video needs encoding
                     needs_encoding = needs_encoding_check(info)
-                    print(f"[DEBUG] yt-dlp video encoding check complete: needs_encoding={needs_encoding}")
 
                     # Check if yt-dlp's title is useless (generic/HLS sources)
                     ytdlp_title_is_useless = (
@@ -987,7 +862,6 @@ class DownloadWorker(QThread):
                     # Check if this was originally an Instagram URL (even if it's been changed to a Vimeo fallback)
                     original_url = download.get('_original_url', download['url'])
                     is_instagram = 'instagram.com' in original_url
-                    print(f"[DEBUG] Checking Instagram: original_url={original_url}, current_url={download['url']}, is_instagram={is_instagram}")
                     
                     if is_instagram:
                         # Try various fields where username might be stored
@@ -1038,7 +912,6 @@ class DownloadWorker(QThread):
                             ydl_opts['paths'] = {'home': extractor_path}
                     else:
                         # For all non-Instagram videos (including Vimeo fallbacks), ensure path configuration
-                        print(f"[DEBUG] Setting up paths for non-Instagram video")
                         # For other platforms, determine folder based on extractor
                         extractor = info.get('extractor', 'Videos')
                         if 'youtube' in extractor.lower():
@@ -1063,7 +936,6 @@ class DownloadWorker(QThread):
                         if our_title and ytdlp_title_is_useless:
                             safe_title = re.sub(r'[<>:"/\\|?*]', '-', our_title).strip().rstrip('.')
                             base_filename = safe_title or '%(title).100s'
-                            print(f"[DEBUG] Using extension-provided title for filename: {base_filename}")
                         else:
                             base_filename = '%(title).100s'
                         
@@ -1087,51 +959,28 @@ class DownloadWorker(QThread):
                             ydl_opts['outtmpl'] = f'{base_filename}.%(ext)s'
                             ydl_opts['paths'] = {'home': extractor_path}
                         
-                        # Debug: Show if we used a Vimeo fallback
-                        if download.get('_used_vimeo_fallback'):
-                            print(f"[DEBUG] This download used Vimeo fallback - paths should be configured normally")
-                            print(f"[DEBUG] Current extractor_path: {extractor_path}")
-                            print(f"[DEBUG] Current ydl_opts paths: {ydl_opts.get('paths', 'NOT SET')}")
-                        
                         # Extract thumbnail URL
                         thumbnail_url = info.get('thumbnail') or info.get('thumbnails', [{}])[0].get('url') if info.get('thumbnails') else None
                         if thumbnail_url:
                             # Emit thumbnail URL to update the UI
                             self.status_update.emit(self.current_download_id, f'thumbnail:{thumbnail_url}')
                         
-                        print(f"[DEBUG] Video info - needs encoding: {needs_encoding}")
                     
                     # Download the video
                     try:
-                        # Debug: Log actual paths being used for download
-                        print(f"[DEBUG] About to download with URL: {download['url']}")
-                        print(f"[DEBUG] Final ydl_opts keys: {list(ydl_opts.keys())}")
-                        if 'playlist_items' in ydl_opts:
-                            print(f"[DEBUG] Final playlist_items: {ydl_opts['playlist_items']}")
-                        print(f"[DEBUG] Final http_headers: {ydl_opts.get('http_headers', {})}")
-                        if 'outtmpl' in ydl_opts:
-                            print(f"[DEBUG] Final outtmpl: {ydl_opts['outtmpl']}")
-                        if 'paths' in ydl_opts:
-                            print(f"[DEBUG] Final paths: {ydl_opts['paths']}")
-                        else:
-                            print(f"[DEBUG] No 'paths' key in ydl_opts!")
-                        
                         with yt_dlp.YoutubeDL(ydl_opts) as ydl:
                             # First, extract info without downloading to check if it's a playlist
-                            print(f"[DEBUG] Extracting info for URL: {download['url']}")
                             info = ydl.extract_info(download['url'], download=False)
                             
                             # Check if this is a playlist with multiple entries (unless skipping detection)
                             if download.get('skip_playlist_detection'):
-                                print(f"[DEBUG] Skipping yt-dlp playlist detection - already processed")
+                                pass
                             elif info.get('_type') == 'playlist' and len(info.get('entries', [])) > 1:
-                                print(f"[DEBUG] Playlist detected with {len(info['entries'])} entries")
                                 
                                 # Add 1-based index to each entry for playlist_items support
                                 for i, entry in enumerate(info.get('entries', [])):
                                     if entry:  # Some entries might be None for unavailable videos
                                         entry['playlist_index'] = i + 1  # yt-dlp uses 1-based indexing
-                                        print(f"[DEBUG] Entry {i+1}: id={entry.get('id')}, playlist_index={entry.get('playlist_index')}")
                                 
                                 # Format playlist entries for video selector
                                 videos = []
@@ -1151,7 +1000,6 @@ class DownloadWorker(QThread):
                                         # Clean smuggled data but preserve query parameters like ?h=
                                         if entry_url and '#__youtubedl_smuggle=' in entry_url:
                                             entry_url = entry_url.split('#__youtubedl_smuggle=')[0]
-                                            print(f"[DEBUG] Cleaned smuggled URL (preserved query params): {entry_url}")
                                         
                                         # Fix malformed URLs with double question marks
                                         if entry_url and '?' in entry_url:
@@ -1159,7 +1007,6 @@ class DownloadWorker(QThread):
                                             if len(parts) > 2:
                                                 # Keep first ?, replace subsequent ? with &
                                                 entry_url = parts[0] + '?' + '&'.join(parts[1:])
-                                                print(f"[DEBUG] Fixed double question mark URL: {entry_url}")
                                         
                                         if not entry_url:
                                             # Fallback: construct URL based on platform
@@ -1191,7 +1038,6 @@ class DownloadWorker(QThread):
                                     'source': urlparse(download['url']).hostname or 'unknown'
                                 }
                                 
-                                print(f"[DEBUG] Emitting playlist_detected signal with {len(videos)} videos")
                                 self.playlist_detected.emit(download['id'], playlist_data)
                                 
                                 # Don't proceed with this download - let user select videos
@@ -1199,24 +1045,17 @@ class DownloadWorker(QThread):
                                 continue
                             
                             # Single video or not a playlist - proceed with download
-                            print(f"[DEBUG] Single video detected, proceeding with download")
                             info = ydl.extract_info(download['url'], download=True)
                     except Exception as ytdl_error:
                         # Check if this is a Vimeo embed error that we can retry
                         error_str = str(ytdl_error)
-                        print(f"[DEBUG] yt-dlp failed with error: {error_str[:500]}...")
                         
                         if self.is_vimeo_embed_error(error_str, download['url']):
-                            print(f"[DEBUG] ✓ Detected Vimeo embed error, attempting fallback")
-                            print(f"[DEBUG] Original URL: {download['url']}")
-                            print(f"[DEBUG] Error type: {type(ytdl_error).__name__}")
                             
                             # Extract Vimeo ID and retry with direct URL
                             vimeo_id = self.extract_vimeo_id(download['url'], error_str)
                             if vimeo_id:
                                 fallback_url = f"https://vimeo.com/{vimeo_id}"
-                                print(f"[DEBUG] ✓ Extracted Vimeo ID: {vimeo_id}")
-                                print(f"[DEBUG] Retrying with direct Vimeo URL: {fallback_url}")
                                 
                                 try:
                                     # Update status to show retry
@@ -1225,40 +1064,23 @@ class DownloadWorker(QThread):
                                     # Create fallback ydl_opts preserving all original settings
                                     import copy
                                     fallback_ydl_opts = ydl_opts.copy()
-                                    print(f"[DEBUG] Using shallow copy of ydl_opts for fallback download")
-                                    print(f"[DEBUG] Fallback ydl_opts keys: {list(fallback_ydl_opts.keys())}")
                                     
                                     # Explicitly copy path-related dictionaries to prevent override
                                     if 'outtmpl' in ydl_opts:
                                         fallback_ydl_opts['outtmpl'] = copy.deepcopy(ydl_opts['outtmpl'])
-                                        print(f"[DEBUG] Copied original outtmpl: {fallback_ydl_opts['outtmpl']}")
                                     
                                     if 'paths' in ydl_opts:
                                         fallback_ydl_opts['paths'] = copy.deepcopy(ydl_opts['paths'])
-                                        print(f"[DEBUG] Copied original paths: {fallback_ydl_opts['paths']}")
                                     
                                     # Also try to override any extractor-specific templates
-                                    if isinstance(original_outtmpl, dict):
-                                        print(f"[DEBUG] Original outtmpl is dict with keys: {list(original_outtmpl.keys())}")
-                                        # Force the default template to use our custom format
-                                        if 'default' in original_outtmpl:
-                                            print(f"[DEBUG] Using custom default template: {original_outtmpl['default']}")
-                                    elif isinstance(original_outtmpl, str):
-                                        print(f"[DEBUG] Original outtmpl is string: {original_outtmpl}")
-                                    
                                     with yt_dlp.YoutubeDL(fallback_ydl_opts) as ydl:
                                         info = ydl.extract_info(fallback_url, download=True)
                                     
-                                    print(f"[DEBUG] ✓ Vimeo fallback successful!")
                                 except Exception as fallback_error:
-                                    print(f"[DEBUG] ✗ Vimeo fallback also failed: {fallback_error}")
-                                    print(f"[DEBUG] Fallback error type: {type(fallback_error).__name__}")
                                     raise ytdl_error  # Re-raise original error
                             else:
-                                print(f"[DEBUG] ✗ Could not extract Vimeo ID for fallback")
                                 raise ytdl_error  # Re-raise original error
                         else:
-                            print(f"[DEBUG] Not a Vimeo embed error, re-raising original error")
                             raise ytdl_error  # Re-raise original error
                     
                     # Track any files created by yt-dlp for cleanup
@@ -1269,7 +1091,6 @@ class DownloadWorker(QThread):
                                 if entry:
                                     filename = ydl.prepare_filename(entry)
                                     self.partial_files.add(filename)
-                                    print(f"[DEBUG] Tracking playlist file: {filename}")
                                     # Also add common variations and fragment files
                                     base = filename.rsplit('.', 1)[0]
                                     for ext in ['.mp4', '.mkv', '.webm', '.part', '.ytdl']:
@@ -1280,7 +1101,6 @@ class DownloadWorker(QThread):
                         else:
                             filename = ydl.prepare_filename(info)
                             self.partial_files.add(filename)
-                            print(f"[DEBUG] Tracking single file: {filename}")
                             # Also add common variations and fragment files
                             base = filename.rsplit('.', 1)[0]
                             for ext in ['.mp4', '.mkv', '.webm', '.part', '.ytdl']:
@@ -1339,9 +1159,6 @@ class DownloadWorker(QThread):
                                 final_path = downloaded_files[0]
                                 # Check if ALL files were skipped (playlist skip detection)
                                 if self.ytdlp_logger.skipped:
-                                    print(f"[DEBUG] ===== PLAYLIST SKIP DETECTED =====")
-                                    print(f"[DEBUG] Download ID: {self.current_download_id}")
-                                    print(f"[DEBUG] Files found: {len(downloaded_files)}")
                                     skip_reason = f"Files already exist ({len(downloaded_files)} files)"
                                     self.download_skipped.emit(self.current_download_id, skip_reason, final_path)
                                     continue
@@ -1350,15 +1167,9 @@ class DownloadWorker(QThread):
                                 encode_setting = download.get('encode_vp9', True)
                                 any_encoding_queued = False
 
-                                print(f"[DEBUG] ===== PLAYLIST POST-PROCESSING =====")
-                                print(f"[DEBUG] Download ID: {self.current_download_id}")
-                                print(f"[DEBUG] Files: {len(downloaded_files)}")
-                                print(f"[DEBUG] needs_encoding={needs_encoding}, encode_vp9={encode_setting}")
-                                print(f"[DEBUG] metadata_option={download.get('metadata_option')}")
 
                                 for file_path in downloaded_files:
                                     if needs_encoding and encode_setting:
-                                        print(f"[DEBUG] ✓ Queuing encoding for playlist file: {file_path}")
                                         metadata_info = {
                                             'metadata_option': download.get('metadata_option'),
                                             'info': info,
@@ -1374,9 +1185,6 @@ class DownloadWorker(QThread):
                                             file_path, download.get('metadata_option'), info, metadata_source_url)
 
                                 if not any_encoding_queued:
-                                    print(f"[DEBUG] ===== EMITTING DOWNLOAD_COMPLETE (PLAYLIST) =====")
-                                    print(f"[DEBUG] Download ID: {self.current_download_id}")
-                                    print(f"[DEBUG] Files: {len(downloaded_files)}")
                                     self.download_complete.emit(
                                         self.current_download_id,
                                         f"{final_path}|MULTI|{len(downloaded_files)} files"
@@ -1398,11 +1206,6 @@ Possible Causes:
                                 self.download_error.emit(self.current_download_id, detailed_error)
                         else:
                             # Single file download (original logic)
-                            print(f"[DEBUG] ===== FILE CHECKING AFTER DOWNLOAD =====")
-                            print(f"[DEBUG]   self.final_filepath: {self.final_filepath}")
-                            print(f"[DEBUG]   info.get('filepath'): {info.get('filepath')}")
-                            print(f"[DEBUG]   info.get('_filename'): {info.get('_filename')}")
-                            print(f"[DEBUG]   info.get('ext'): {info.get('ext')}")
 
                             # List files in the save directory to see what actually exists
                             import glob
@@ -1417,27 +1220,12 @@ Possible Causes:
                             else:
                                 check_dir = save_path
 
-                            if os.path.exists(check_dir):
-                                files_in_dir = glob.glob(os.path.join(check_dir, '*'))
-                                print(f"[DEBUG]   Files in {check_dir}:")
-                                for f in files_in_dir[-10:]:  # Last 10 files
-                                    print(f"[DEBUG]     - {os.path.basename(f)}")
-                            else:
-                                print(f"[DEBUG]   Directory does not exist: {check_dir}")
-
                             # First check if postprocessor captured the final filepath (after merging)
                             if self.final_filepath and os.path.exists(self.final_filepath):
                                 final_path = self.final_filepath
-                                print(f"[DEBUG] ✓ Using postprocessor filepath: {final_path}")
                             else:
-                                if self.final_filepath:
-                                    print(f"[DEBUG] ✗ Postprocessor filepath doesn't exist: {self.final_filepath}")
-                                else:
-                                    print(f"[DEBUG] ✗ No postprocessor filepath captured")
-
                                 # Fallback to prepare_filename and check various extensions
                                 filename = ydl.prepare_filename(info)
-                                print(f"[DEBUG] prepare_filename returned: {filename}")
 
                                 # Handle various extensions (merging may change extension)
                                 possible_files = [
@@ -1450,46 +1238,26 @@ Possible Causes:
 
                                 final_path = None
                                 for path in possible_files:
-                                    print(f"[DEBUG] Checking for file: {path}")
                                     if os.path.exists(path):
                                         final_path = path
-                                        print(f"[DEBUG] ✓ Found file: {path}")
                                         break
 
-                                if not final_path:
-                                    print(f"[DEBUG] ✗ No file found in any checked path!")
-                            
                             if final_path and self.current_download_id not in self.cancelled_downloads:
                                 # Remove from partial files once we have final path
                                 self.partial_files.discard(final_path)
 
                                 # Check if file was skipped (already exists)
                                 if self.ytdlp_logger.skipped:
-                                    print(f"[DEBUG] ===== SKIP DETECTED =====")
-                                    print(f"[DEBUG] Download ID: {self.current_download_id}")
-                                    print(f"[DEBUG] Download URL: {download.get('url', 'Unknown')}")
-                                    print(f"[DEBUG] File path: {final_path}")
-                                    print(f"[DEBUG] Logger skip_reason: {self.ytdlp_logger.skip_reason}")
-                                    print(f"[DEBUG] Logger skipped_filename: {self.ytdlp_logger.skipped_filename}")
                                     skip_reason = f"File already exists: {os.path.basename(final_path)}"
-                                    print(f"[DEBUG] Emitting download_skipped signal for ID: {self.current_download_id}")
                                     self.download_skipped.emit(self.current_download_id, skip_reason, final_path)
-                                    print(f"[DEBUG] Signal emitted, now calling continue...")
                                     continue  # Move to next download in queue
 
                                 # Check if we need to encode
                                 # NOTE: If we reach here, skip was NOT detected (continue would have skipped this)
-                                print(f"[DEBUG] ===== PROCEEDING TO ENCODE/COMPLETE (skip was False) =====")
-                                print(f"[DEBUG] Download ID: {self.current_download_id}")
-                                print(f"[DEBUG] yt-dlp single video download complete: {final_path}")
-                                print(f"[DEBUG] Download type: yt-dlp single video")
-                                print(f"[DEBUG] encode_vp9 setting: {download.get('encode_vp9', True)}")
                                 
                                 encode_setting = download.get('encode_vp9', True)
-                                print(f"[DEBUG] yt-dlp encoding decision: needs_encoding={needs_encoding}, encode_vp9={encode_setting}")
                                 
                                 if needs_encoding and encode_setting:
-                                    print(f"[DEBUG] ✓ Queuing encoding for yt-dlp video: {final_path}")
                                     # Emit encoding_needed signal - EncodingWorker will handle the actual encoding
                                     metadata_info = {
                                         'metadata_option': download.get('metadata_option'),
@@ -1501,13 +1269,8 @@ Possible Causes:
                                     self.encoding_needed.emit(self.current_download_id, final_path, keep_original, metadata_info)
                                     # Don't emit download_complete - EncodingWorker will emit encoding_complete when done
                                 else:
-                                    print(f"[DEBUG] ✗ Skipping encoding for yt-dlp video: needs_encoding={needs_encoding}, encode_vp9={encode_setting}")
                                     # Embed metadata if requested
                                     self.embed_video_metadata_if_requested(final_path, download.get('metadata_option'), info, metadata_source_url)
-                                    print(f"[DEBUG] ===== EMITTING DOWNLOAD_COMPLETE =====")
-                                    print(f"[DEBUG] Download ID: {self.current_download_id}")
-                                    print(f"[DEBUG] Path: {final_path}")
-                                    print(f"[DEBUG] Logger skipped state: {self.ytdlp_logger.skipped}")
                                     self.download_complete.emit(self.current_download_id, final_path)
                             else:
                                 if self.current_download_id in self.cancelled_downloads:
@@ -1531,15 +1294,12 @@ Possible Causes:
                                     self.download_error.emit(self.current_download_id, detailed_error)
                             
             except Exception as e:
-                print(f"[DEBUG] Exception in download loop for {self.current_download_id}: {str(e)}")
                 
                 if self.current_download_id in self.cancelled_downloads:
-                    print(f"[DEBUG] Handling cancellation in exception handler for {self.current_download_id}")
                     # Clean up partial files and emit cancellation signal
                     self.cleanup_partial_files(self.current_download_id)
                     self.download_cancelled.emit(self.current_download_id)
                 elif "Download cancelled by user" in str(e):
-                    print(f"[DEBUG] Detected cancellation via exception message for {self.current_download_id}")
                     # This might be a cancellation that wasn't caught properly
                     self.cancelled_downloads.add(self.current_download_id)
                     self.cleanup_partial_files(self.current_download_id)

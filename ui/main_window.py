@@ -433,10 +433,6 @@ class MainWindow(QMainWindow):
         divider_color = f"rgb({divider_r}, {divider_g}, {divider_b})"
         
         # Debug prints for theme detection verification
-        print(f"[DEBUG] Theme detected: {theme_type}")
-        print(f"[DEBUG] Background RGB: ({bg_r}, {bg_g}, {bg_b}) - Luminance: {bg_luminance:.2f}")
-        print(f"[DEBUG] Text RGB: ({text_r}, {text_g}, {text_b}) - Luminance: {text_luminance:.2f}")
-        print(f"[DEBUG] Divider color: {divider_color}")
         
         divider.setStyleSheet(f"""
             QWidget {{
@@ -572,14 +568,12 @@ class MainWindow(QMainWindow):
 
     def quit_application(self):
         """Properly shut down workers and quit the application"""
-        print("[DEBUG] Shutting down workers...")
         # Stop the encoding worker
         self.encoding_worker.stop()
         self.encoding_worker.wait(5000)  # Wait up to 5 seconds for clean shutdown
         # Stop the download worker
         self.download_queue.put(None)  # Signal worker to stop
         self.worker.wait(5000)
-        print("[DEBUG] Workers stopped, quitting application")
         QApplication.quit()
     
     def toggle_tray_visibility(self, checked):
@@ -690,7 +684,6 @@ class MainWindow(QMainWindow):
         
         # Get thumbnail URL
         thumbnail_url = data.get('thumbnail')
-        print(f"[DEBUG] Received download with thumbnail: {thumbnail_url}")
         
         # Create download item widget
         item_widget = DownloadItem(download_id, title, data['url'], thumbnail_url)
@@ -746,10 +739,7 @@ class MainWindow(QMainWindow):
             'playlist_index': data.get('playlist_index')
         }
         
-        print(f"[DEBUG] About to put download in queue: {download_id}")
-        print(f"[DEBUG] Queue data: {download_queue_data}")
         self.download_queue.put(download_queue_data)
-        print(f"[DEBUG] Download added to queue: {download_id}")
         
         # Update UI status
         item_widget.status_label.setText("Starting...")
@@ -777,8 +767,6 @@ class MainWindow(QMainWindow):
         # Mark first download received (dialog's showEvent handles bring-to-front)
         self._first_download_received = True
 
-        print(f"[DEBUG] handle_video_list called with: {data}")
-        print(f"[DEBUG] handle_video_list called with {len(data.get('videos', []))} videos")
         
         try:
             # Show video selector dialog
@@ -789,13 +777,11 @@ class MainWindow(QMainWindow):
                 self
             )
             
-            print("[DEBUG] Showing video selector dialog...")
             
             if dialog.exec_():
                 selected = dialog.get_selected_videos()
                 
                 if selected:
-                    print(f"[DEBUG] User selected {len(selected)} videos")
                     
                     # Process each selected video
                     for video_info in selected:
@@ -818,7 +804,6 @@ class MainWindow(QMainWindow):
                                 'source': data['source'],
                                 'thumbnail': video_info.get('thumbnail')
                             }
-                            print(f"[DEBUG] Queueing platform video for yt-dlp download: {download_data}")
                             self.add_download(download_data)
                         else:
                             # Check if it's actually a direct file URL
@@ -834,7 +819,6 @@ class MainWindow(QMainWindow):
                                     'source': data['source'],
                                     'thumbnail': video_info.get('thumbnail')
                                 }
-                                print(f"[DEBUG] Queueing direct file for download: {download_data}")
                                 self.add_direct_video_download(download_data)
                             else:
                                 # Unknown format - default to yt-dlp to be safe
@@ -846,7 +830,6 @@ class MainWindow(QMainWindow):
                                     'source': data['source'],
                                     'thumbnail': video_info.get('thumbnail')
                                 }
-                                print(f"[DEBUG] Queueing unknown format for yt-dlp download (safe fallback): {download_data}")
                                 self.add_download(download_data)
                     
                     # Show batch notification
@@ -856,9 +839,6 @@ class MainWindow(QMainWindow):
                         QSystemTrayIcon.Information,
                         2000
                     )
-            else:
-                print("[DEBUG] User cancelled video selection")
-                
         except Exception as e:
             print(f"[ERROR] Failed to show video dialog: {e}")
             import traceback
@@ -876,8 +856,6 @@ class MainWindow(QMainWindow):
         # Note: This is usually already set, but handles edge cases
         self._first_download_received = True
 
-        print(f"[DEBUG] handle_playlist_detected called for download {download_id}")
-        print(f"[DEBUG] Playlist data: {len(playlist_data.get('videos', []))} videos")
         
         try:
             # Remove the original download item since it will be replaced with selected videos
@@ -895,18 +873,14 @@ class MainWindow(QMainWindow):
                 self
             )
             
-            print("[DEBUG] Showing playlist video selector dialog...")
             
             if dialog.exec_():
                 selected = dialog.get_selected_videos()
                 
                 if selected:
-                    print(f"[DEBUG] User selected {len(selected)} videos from playlist")
                     
                     # Process each selected video (same logic as handle_video_list)
                     for video_info in selected:
-                        print(f"[DEBUG] Selected video keys: {list(video_info.keys())}")
-                        print(f"[DEBUG] Selected video playlist_index: {video_info.get('playlist_index')}")
                         url = video_info['url']
                         
                         # Check if this should use yt-dlp (video type) or direct download (direct-video type)
@@ -928,8 +902,6 @@ class MainWindow(QMainWindow):
                                 'skip_playlist_detection': True,
                                 'playlist_index': video_info.get('playlist_index')
                             }
-                            print(f"[DEBUG] Queueing from playlist: {download_data}")
-                            print(f"[DEBUG] video_info.get('playlist_index') = {video_info.get('playlist_index')}")
                             self.add_download(download_data)
                         else:
                             # Check if it's actually a direct file URL
@@ -945,7 +917,6 @@ class MainWindow(QMainWindow):
                                     'source': playlist_data['source'],
                                     'thumbnail': video_info.get('thumbnail')
                                 }
-                                print(f"[DEBUG] Queueing from playlist: {download_data}")
                                 self.add_direct_video_download(download_data)
                             else:
                                 # Unknown format - default to yt-dlp to be safe
@@ -959,7 +930,6 @@ class MainWindow(QMainWindow):
                                     'skip_playlist_detection': True,
                                     'playlist_index': video_info.get('playlist_index')
                                 }
-                                print(f"[DEBUG] Queueing from playlist: {download_data}")
                                 self.add_download(download_data)
                     
                     # Show batch notification
@@ -969,11 +939,6 @@ class MainWindow(QMainWindow):
                         QSystemTrayIcon.Information,
                         2000
                     )
-                else:
-                    print("[DEBUG] No videos selected from playlist")
-            else:
-                print("[DEBUG] User cancelled playlist video selection")
-                
         except Exception as e:
             print(f"[ERROR] Failed to show playlist dialog: {e}")
             import traceback
@@ -1045,10 +1010,7 @@ class MainWindow(QMainWindow):
             'metadata_option': self.settings.get('metadata_option', 'none')
         }
         
-        print(f"[DEBUG] About to put direct video download in queue: {download_id}")
-        print(f"[DEBUG] Direct video queue data: {download_queue_data}")
         self.download_queue.put(download_queue_data)
-        print(f"[DEBUG] Direct video download added to queue: {download_id}")
         
         # Update UI status
         item_widget.status_label.setText("Starting...")
@@ -1100,9 +1062,6 @@ class MainWindow(QMainWindow):
     
     def download_finished(self, download_id, path):
         """Handle download completion"""
-        print(f"[DEBUG] ===== DOWNLOAD FINISHED CALLED =====")
-        print(f"[DEBUG] Download ID: {download_id}")
-        print(f"[DEBUG] Path: {path}")
         if download_id in self.download_items:
             widget = self.download_items[download_id]['widget']
             widget.progress_bar.setValue(100)
@@ -1224,11 +1183,6 @@ class MainWindow(QMainWindow):
 
     def download_skipped_handler(self, download_id, reason, filepath):
         """Handle skipped download (file already exists)"""
-        print(f"[DEBUG] ===== SKIP HANDLER CALLED =====")
-        print(f"[DEBUG] Received download_id: {download_id}")
-        print(f"[DEBUG] Reason: {reason}")
-        print(f"[DEBUG] Filepath: {filepath}")
-        print(f"[DEBUG] Known download_items: {list(self.download_items.keys())}")
 
         if download_id in self.download_items:
             widget = self.download_items[download_id]['widget']
@@ -1241,11 +1195,8 @@ class MainWindow(QMainWindow):
             reveal_btn = self._create_reveal_button("Show in Finder",
                                                    lambda: self.reveal_in_finder(filepath))
             widget.layout().addWidget(reveal_btn)
-        else:
-            print(f"[DEBUG] WARNING: download_id {download_id} not found in download_items!")
 
         # Show notification (always, even if item not found in UI)
-        print(f"[DEBUG] Showing skip notification for: {reason}")
         self.tray_icon.showMessage(
             "Download Skipped",
             reason,
@@ -1257,7 +1208,6 @@ class MainWindow(QMainWindow):
 
     def queue_encoding_job(self, download_id, filepath, keep_original, metadata_info):
         """Queue an encoding job for the encoding worker"""
-        print(f"[DEBUG] Queuing encoding job for {download_id}: {filepath}")
         # Update UI to show download complete, awaiting encoding
         if download_id in self.download_items:
             widget = self.download_items[download_id]['widget']
@@ -1268,7 +1218,6 @@ class MainWindow(QMainWindow):
 
     def encoding_started_handler(self, download_id):
         """Handle encoding started"""
-        print(f"[DEBUG] Encoding started for {download_id}")
         if download_id in self.download_items:
             widget = self.download_items[download_id]['widget']
             widget.status_label.setText("Encoding to H.264...")
@@ -1284,13 +1233,11 @@ class MainWindow(QMainWindow):
 
     def encoding_complete_handler(self, download_id, final_path):
         """Handle encoding completion - same as download_finished"""
-        print(f"[DEBUG] Encoding complete for {download_id}: {final_path}")
         # Reuse the download_finished handler since the UI behavior is the same
         self.download_finished(download_id, final_path)
 
     def encoding_error_handler(self, download_id, error):
         """Handle encoding error"""
-        print(f"[DEBUG] Encoding error for {download_id}: {error}")
         # Bring window to front so user sees the error
         bring_window_to_front(self)
 
@@ -1304,7 +1251,6 @@ class MainWindow(QMainWindow):
 
     def encoding_cancelled_handler(self, download_id):
         """Handle encoding cancellation"""
-        print(f"[DEBUG] Encoding cancelled for {download_id}")
         if download_id in self.download_items:
             widget = self.download_items[download_id]['widget']
             widget.progress_bar.setValue(0)
@@ -1382,7 +1328,6 @@ class MainWindow(QMainWindow):
                 primary_screen = desktop.screenGeometry(desktop.primaryScreen())
                 x = primary_screen.x() + primary_screen.width() - width - 50
                 y = primary_screen.y() + 50
-                print(f"[DEBUG] Window was off-screen, moved to primary monitor")
             else:
                 # Ensure window fits within the screen that contains it
                 screen_rect = desktop.screenGeometry(screen_containing_window)
@@ -1403,8 +1348,6 @@ class MainWindow(QMainWindow):
         # Get screen info for debug
         screen_num = desktop.screenNumber(QRect(x, y, width, height).center())
         screen_geometry = desktop.screenGeometry(screen_num)
-        print(f"[DEBUG] Restored window geometry: {x}, {y}, {width}x{height}")
-        print(f"[DEBUG] Window on screen {screen_num}: {screen_geometry.x()},{screen_geometry.y()} {screen_geometry.width()}x{screen_geometry.height()}")
     
     def _find_best_screen_for_window(self, window_rect):
         """Find which screen contains the largest portion of the window"""
@@ -1451,16 +1394,12 @@ class MainWindow(QMainWindow):
         # Save settings to file
         Settings.save(self.settings)
         
-        print(f"[DEBUG] Saved window geometry: {geometry.x()}, {geometry.y()}, {geometry.width()}x{geometry.height()}")
-        print(f"[DEBUG] Window on screen {screen_num}: {screen_geometry.x()},{screen_geometry.y()} {screen_geometry.width()}x{screen_geometry.height()}")
         
         # Additional debug info about multi-monitor setup
         if desktop.screenCount() > 1:
-            print(f"[DEBUG] Multi-monitor setup detected: {desktop.screenCount()} screens")
             for i in range(desktop.screenCount()):
                 screen_rect = desktop.screenGeometry(i)
                 is_primary = " (PRIMARY)" if i == desktop.primaryScreen() else ""
-                print(f"[DEBUG] Screen {i}{is_primary}: {screen_rect.x()},{screen_rect.y()} {screen_rect.width()}x{screen_rect.height()}")
     
     def moveEvent(self, event):
         """Handle window move events to save position"""

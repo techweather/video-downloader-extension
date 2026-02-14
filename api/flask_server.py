@@ -67,23 +67,19 @@ class FlaskServer:
                 JSON response with status
             """
             data = request.json
-            print(f"[DEBUG] Received request with type: {data.get('type')}")
             
             # Add detailed logging for debugging
             import json
-            print(f"[DEBUG] Full payload received: {json.dumps(data, indent=2)}")
             
             if not data:
                 return jsonify({"status": "error", "message": "No data provided"}), 400
             
             # Check if this is a video list that needs selection
             if data.get('type') == 'video-list':
-                print(f"[DEBUG] Video list received with {len(data.get('videos', []))} videos")
                 
                 if self.window:
                     # Emit signal to show video selector dialog
                     self.window.video_list_received.emit(data)
-                    print("[DEBUG] Emitted video_list_received signal")
                 else:
                     print("[ERROR] Window reference is None!")
                     return jsonify({"status": "error", "message": "Application not ready"}), 503
@@ -93,7 +89,6 @@ class FlaskServer:
                 if self.window:
                     # Emit signal to add single download
                     self.window.new_download.emit(data)
-                    print(f"[DEBUG] Emitted new_download signal for {data.get('type', 'unknown')} download")
                 else:
                     print("[ERROR] Window reference is None!")
                     return jsonify({"status": "error", "message": "Application not ready"}), 503

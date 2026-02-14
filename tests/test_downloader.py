@@ -146,11 +146,12 @@ class TestDownloadWorker:
             referrer=referrer
         )
         
-        # Check that requests.get was called with proper headers
+        # Verify download was attempted (header escalation starts with minimal headers)
+        assert mock_get.called
+        # Origin header is intentionally omitted (causes 403 on CDNs like Sanity)
         call_args = mock_get.call_args
         headers = call_args[1]['headers']
-        assert headers['Referer'] == referrer
-        assert 'Origin' in headers
+        assert 'Origin' not in headers
     
     def test_progress_hook_downloading(self, download_worker):
         """Test progress hook during downloading"""

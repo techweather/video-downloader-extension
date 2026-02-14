@@ -35,10 +35,8 @@ class VersionCheckWorker(QThread):
             with urllib.request.urlopen(req, timeout=15) as resp:
                 data = json.loads(resp.read().decode())
             latest = data.get("tag_name", "").lstrip("v")
-            print(f"[DEBUG] yt-dlp latest version from GitHub: {latest}")
             self.finished.emit(latest or "")
         except Exception as e:
-            print(f"[DEBUG] yt-dlp version check failed: {e}")
             self.finished.emit("")
 
 
@@ -70,7 +68,6 @@ class InstallUpdateWorker(QThread):
             )
 
             if result.returncode != 0:
-                print(f"[DEBUG] pip upgrade stderr: {result.stderr}")
                 self.finished.emit(False, f"Update failed: {result.stderr[:120]}", current)
                 return
 
@@ -82,9 +79,7 @@ class InstallUpdateWorker(QThread):
             )
             new_version = ver_result.stdout.strip() if ver_result.returncode == 0 else self.target_version
 
-            print(f"[DEBUG] yt-dlp updated to: {new_version}")
             self.finished.emit(True, f"Updated from {current}", new_version)
 
         except Exception as e:
-            print(f"[DEBUG] Update error: {e}")
             self.finished.emit(False, f"Update failed: {e}", current)

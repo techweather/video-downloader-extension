@@ -51,7 +51,6 @@
   function extractImageURL(element) {
     if (!element) return null;
     
-    console.log('[Image Picker Debug] Checking element:', element.tagName, element.className || '', element.id || '');
     
     // Direct img tag
     if (element.tagName === 'IMG') {
@@ -60,32 +59,23 @@
       
       // First check if src is just a base URL - if so, log ALL attributes
       if (element.src && (element.src.endsWith('/') || !element.src.includes('.'))) {
-        console.log('[Image Picker Debug] Found suspicious src (base URL):', element.src);
-        console.log('[Image Picker Debug] currentSrc (what browser displays):', element.currentSrc);
         
-        console.log('[Image Picker Debug] ALL IMG attributes:');
         // Log all standard attributes
         for (let i = 0; i < element.attributes.length; i++) {
           const attr = element.attributes[i];
-          console.log('  ' + attr.name + ':', attr.value);
         }
         
-        console.log('[Image Picker Debug] Dataset properties:');
         // Log all dataset properties
         for (const [key, value] of Object.entries(element.dataset)) {
-          console.log('  data-' + key + ':', value);
         }
         
-        console.log('[Image Picker Debug] ALL element properties:');
         // Log all properties of the element object
         const allProps = Object.keys(element);
         allProps.forEach(prop => {
           try {
             const value = element[prop];
             if (typeof value === 'string' && value.length > 0 && value.length < 500) {
-              console.log('  ' + prop + ':', value);
             } else if (typeof value === 'number' || typeof value === 'boolean') {
-              console.log('  ' + prop + ':', value);
             }
           } catch (e) {
             // Skip properties that can't be accessed
@@ -94,7 +84,6 @@
         
         // Check srcset specifically
         if (element.srcset) {
-          console.log('[Image Picker Debug] Srcset found:', element.srcset);
         }
       }
       
@@ -150,15 +139,12 @@
       }
       
       if (url) {
-        console.log('[Image Picker Debug] Found IMG URL:', url, 'from:', source, 'size estimate:', Math.round(url.length/1024*0.75) + 'KB (base64)');
         // Filter out tiny placeholder images (likely < 10KB)
         if (url.startsWith('data:image/') && url.length < 13000) { // ~10KB base64
-          console.log('[Image Picker Debug] Skipping small data URL (likely placeholder)');
           return null;
         }
         return url;
       } else {
-        console.log('[Image Picker Debug] No valid image URL found in IMG element');
       }
     }
     
@@ -168,13 +154,11 @@
       const match = bgImage.match(/url\(["']?(.+?)["']?\)/);
       if (match) {
         const url = match[1];
-        console.log('[Image Picker Debug] Found background-image URL:', url);
         
         // Filter out common empty/placeholder patterns
         if (url.startsWith('data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///') || // 1x1 transparent gif
             url.startsWith('data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg==') || // 1x1 transparent png
             url === 'about:blank') {
-          console.log('[Image Picker Debug] Skipping known placeholder background image');
           return null;
         }
         return url;
@@ -184,7 +168,6 @@
     // Check for img children
     const img = element.querySelector('img');
     if (img) {
-      console.log('[Image Picker Debug] Checking child img element');
       return extractImageURL(img); // Recursive call to check lazy loading
     }
     
@@ -192,12 +175,10 @@
     if (element.parentElement) {
       const parentImg = element.parentElement.querySelector('img');
       if (parentImg) {
-        console.log('[Image Picker Debug] Checking parent img element');
         return extractImageURL(parentImg); // Recursive call to check lazy loading
       }
     }
     
-    console.log('[Image Picker Debug] No URL found for element');
     return null;
   }
 

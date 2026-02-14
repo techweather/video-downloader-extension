@@ -19,7 +19,6 @@ browser.contextMenus.create({
 
 // Function to detect video embeds (Vimeo and YouTube) on a page
 function detectVideoEmbeds() {
-  console.log('Detecting video embeds...');
   
   const allVideos = [];
   const processedIds = new Set();
@@ -74,12 +73,10 @@ function detectVideoEmbeds() {
   
   // Find all Vimeo iframes
   const vimeoIframes = document.querySelectorAll('iframe[src*="player.vimeo.com/video/"]');
-  console.log('Found ' + vimeoIframes.length + ' Vimeo iframes');
   
   vimeoIframes.forEach((iframe, index) => {
     try {
       const src = iframe.src;
-      console.log('Processing Vimeo iframe ' + (index + 1) + ': ' + src);
       
       // Extract Vimeo ID using regex
       const match = src.match(/player\.vimeo\.com\/video\/(\d+)/);
@@ -88,7 +85,6 @@ function detectVideoEmbeds() {
         
         // Avoid duplicates
         if (processedIds.has('vimeo_' + vimeoId)) {
-          console.log('Skipping duplicate Vimeo ID: ' + vimeoId);
           return;
         }
         processedIds.add('vimeo_' + vimeoId);
@@ -102,7 +98,6 @@ function detectVideoEmbeds() {
         // Use original embed URL to preserve ?h= hash for private videos
         const vimeoUrl = iframe.src.split('#')[0];
         
-        console.log('Found Vimeo video: ' + title + ' (' + vimeoUrl + ')');
         
         allVideos.push({
           id: vimeoId,
@@ -119,12 +114,10 @@ function detectVideoEmbeds() {
   
   // Find all YouTube iframes
   const youtubeIframes = document.querySelectorAll('iframe[src*="youtube.com/embed/"], iframe[src*="youtube-nocookie.com/embed/"]');
-  console.log('Found ' + youtubeIframes.length + ' YouTube iframes');
   
   youtubeIframes.forEach((iframe, index) => {
     try {
       const src = iframe.src;
-      console.log('Processing YouTube iframe ' + (index + 1) + ': ' + src);
       
       // Extract YouTube ID using regex
       const match = src.match(/\/embed\/([a-zA-Z0-9_-]+)/);
@@ -133,7 +126,6 @@ function detectVideoEmbeds() {
         
         // Avoid duplicates
         if (processedIds.has('youtube_' + youtubeId)) {
-          console.log('Skipping duplicate YouTube ID: ' + youtubeId);
           return;
         }
         processedIds.add('youtube_' + youtubeId);
@@ -147,7 +139,6 @@ function detectVideoEmbeds() {
         // Construct YouTube URL
         const youtubeUrl = 'https://www.youtube.com/watch?v=' + youtubeId;
         
-        console.log('Found YouTube video: ' + title + ' (' + youtubeUrl + ')');
         
         allVideos.push({
           id: youtubeId,
@@ -196,7 +187,6 @@ function detectVideoEmbeds() {
     }
   });
 
-  console.log('Found ' + muxIds.size + ' Mux playback IDs');
 
   // Build a clean base title from page title (strip site name suffixes)
   var pageTitle = document.title || '';
@@ -233,14 +223,11 @@ function detectVideoEmbeds() {
     });
   });
 
-  console.log('Total unique video embeds found: ' + allVideos.length);
   return allVideos;
 }
 
 // Reusable function to trigger video download on a tab
 function triggerVideoDownload(tab, contextInfo) {
-  console.log('[DEBUG] Starting enhanced video detection...');
-  console.log('[DEBUG] Executing script on tab:', tab.id);
 
   // First, scan the page for video embeds
   browser.tabs.executeScript(tab.id, {
@@ -297,13 +284,8 @@ function triggerVideoDownload(tab, contextInfo) {
       })();
     `
   }, function(results) {
-    console.log('[DEBUG] ====== EXECUTESCRIPT CALLBACK ======');
-    console.log('[DEBUG] Callback fired at:', new Date().toISOString());
-    console.log('[DEBUG] Raw results:', results);
-    console.log('[DEBUG] browser.runtime.lastError:', browser.runtime.lastError);
 
     if (browser.runtime.lastError) {
-      console.error('[DEBUG] ERROR: Script injection failed:', browser.runtime.lastError.message);
       return;
     }
 
@@ -311,19 +293,12 @@ function triggerVideoDownload(tab, contextInfo) {
     const videoEmbeds = result.embeds;
     const pageData = result.pageData;
 
-    console.log('[DEBUG] Parsed result:', result);
-    console.log('[DEBUG] Video embeds found:', videoEmbeds ? videoEmbeds.length : 0);
-
-    console.log('Video embed detection results:', videoEmbeds);
-    console.log('Found', videoEmbeds.length, 'video embeds');
 
     // Determine the URL to use (from context menu info or page URL)
     const url = (contextInfo && (contextInfo.linkUrl || contextInfo.srcUrl || contextInfo.pageUrl)) || pageData.url || tab.url;
 
     if (videoEmbeds.length >= 2) {
       // Multiple embeds found - send page URL with detected video data
-      console.log('[DEBUG] BRANCH: Multiple video embeds (>= 2)');
-      console.log('[DEBUG] Detected embeds:', videoEmbeds.map(v => v.platform + ':' + v.id));
 
       // Format detected videos for the app
       const detectedVideos = videoEmbeds.map(video => ({
@@ -347,8 +322,6 @@ function triggerVideoDownload(tab, contextInfo) {
       });
     } else {
       // 0-1 embeds found - use current behavior (send page URL for yt-dlp)
-      console.log('[DEBUG] BRANCH: Standard behavior (0-1 embeds)');
-      console.log('[DEBUG] Using yt-dlp for page URL');
 
       sendToNativeApp({
         type: 'video',
@@ -364,7 +337,6 @@ function triggerVideoDownload(tab, contextInfo) {
 
 // Reusable function to trigger video scraping on a tab
 function triggerScrapeVideos(tab) {
-  console.log('Starting video scrape...');
 
   // Show informative alert about scrolling first
   browser.tabs.executeScript(tab.id, {
@@ -392,17 +364,14 @@ function triggerScrapeVideos(tab) {
 
     const userConfirmed = results && results[0];
     if (!userConfirmed) {
-      console.log('User cancelled video scraping to scroll first');
       return;
     }
 
-    console.log('User confirmed, proceeding with video scraping...');
 
     // Inject the video scraping script
     browser.tabs.executeScript(tab.id, {
       code: `
         (function() {
-          console.log('Video scraper starting...');
 
           // Send result back to background script
           function sendVideosToBackground(videos, pageTitle, pageUrl) {
@@ -507,9 +476,7 @@ function triggerScrapeVideos(tab) {
             }
 
             // 1. Find all <video> elements
-            console.log('Looking for video elements...');
             const videoElements = document.querySelectorAll('video');
-            console.log('Found', videoElements.length, 'video elements');
 
             let blobVideoCount = 0;
 
@@ -517,7 +484,6 @@ function triggerScrapeVideos(tab) {
               if (video.src) {
                 // Skip blob: URLs (from MediaSource/HLS players like Mux) - not directly downloadable
                 if (video.src.startsWith('blob:')) {
-                  console.log('Skipping blob: URL on video element', index);
                   blobVideoCount++;
                   return;
                 }
@@ -565,7 +531,6 @@ function triggerScrapeVideos(tab) {
               });
             });
 
-            console.log('Blob video elements skipped:', blobVideoCount);
 
             // 2. Look for data attribute videos
             const elementsWithVideoData = document.querySelectorAll('[data-video-src], [data-mp4-src], video[data-src]');
@@ -624,7 +589,6 @@ function triggerScrapeVideos(tab) {
             });
 
             // 4. Squarespace hosted videos (data-config-video JSON attribute)
-            console.log('Looking for Squarespace hosted videos...');
             document.querySelectorAll('[data-config-video]').forEach(element => {
               try {
                 const configJson = element.getAttribute('data-config-video');
@@ -646,7 +610,6 @@ function triggerScrapeVideos(tab) {
                       ? config.filename.replace(/\\.[^.]+$/, '')  // strip extension
                       : findNearbyText(element) || ('Video ' + (videos.length + 1));
                     const thumbnail = findNearbyImage(element);
-                    console.log('Found Squarespace video:', title, hlsUrl);
                     videos.push({
                       url: hlsUrl,
                       type: 'hls',
@@ -657,12 +620,10 @@ function triggerScrapeVideos(tab) {
                   }
                 }
               } catch (e) {
-                console.log('Error parsing data-config-video:', e);
               }
             });
 
             // 5. Scan ALL data-* attributes for video URLs (.mp4, .webm, .mov, .m3u8)
-            console.log('Scanning data-* attributes for video URLs...');
             document.querySelectorAll('*').forEach(element => {
               for (const attr of element.attributes) {
                 if (!attr.name.startsWith('data-') || attr.name === 'data-config-video') continue;
@@ -680,7 +641,6 @@ function triggerScrapeVideos(tab) {
                         const filename = getFilenameFromUrl(url);
                         title = filename || ('Video ' + (videos.length + 1));
                       }
-                      console.log('Found video URL in', attr.name + ':', url);
                       videos.push({
                         url: url,
                         type: isHls ? 'hls' : 'data-attribute',
@@ -695,7 +655,6 @@ function triggerScrapeVideos(tab) {
             });
 
             // 6. Video URLs in inline <script> tags (JSON configs, framework data)
-            console.log('Scanning inline scripts for video URLs...');
             document.querySelectorAll('script:not([src])').forEach(script => {
               const text = script.textContent;
               if (!text || text.length > 500000) return;
@@ -706,7 +665,6 @@ function triggerScrapeVideos(tab) {
                 const url = match[0];
                 if (!processedUrls.has(url)) {
                   processedUrls.add(url);
-                  console.log('Found video URL in script tag:', url);
                   videos.push({
                     url: url,
                     type: 'script-json',
@@ -719,12 +677,10 @@ function triggerScrapeVideos(tab) {
             });
 
             // 7. Preload/prefetch link tags
-            console.log('Looking for preloaded video links...');
             document.querySelectorAll('link[rel="preload"][as="video"], link[rel="prefetch"][as="video"], link[rel="preload"][href*=".mp4"], link[rel="preload"][href*=".webm"], link[rel="prefetch"][href*=".mp4"]').forEach(link => {
               const url = resolveUrl(link.href);
               if (url && !processedUrls.has(url)) {
                 processedUrls.add(url);
-                console.log('Found preloaded video:', url);
                 videos.push({
                   url: url,
                   type: 'preload',
@@ -736,14 +692,12 @@ function triggerScrapeVideos(tab) {
             });
 
             // 8. Meta tags (og:video, twitter:player:stream)
-            console.log('Looking for video meta tags...');
             ['meta[property="og:video"]', 'meta[property="og:video:url"]', 'meta[property="og:video:secure_url"]', 'meta[name="twitter:player:stream"]'].forEach(selector => {
               const meta = document.querySelector(selector);
               if (meta && meta.content) {
                 const url = resolveUrl(meta.content);
                 if (url && !processedUrls.has(url)) {
                   processedUrls.add(url);
-                  console.log('Found video meta tag:', selector, url);
                   const isHls = url.toLowerCase().includes('.m3u8');
                   videos.push({
                     url: url,
@@ -757,7 +711,6 @@ function triggerScrapeVideos(tab) {
             });
 
             // 9. Detect Mux videos from image.mux.com thumbnail URLs in the DOM
-            console.log('Looking for Mux video thumbnails...');
             const muxIds = new Set();
 
             // Check all img elements for Mux thumbnail URLs
@@ -774,16 +727,13 @@ function triggerScrapeVideos(tab) {
             });
 
             // 10. Detect Mux videos from __NEXT_DATA__ or inline JSON (Next.js / React SSR pages)
-            console.log('Looking for Mux playback IDs in page data...');
             const nextDataScript = document.querySelector('script#__NEXT_DATA__');
             if (nextDataScript) {
               try {
                 const nextData = nextDataScript.textContent;
                 const playbackMatches = nextData.matchAll(/"playbackId"\\s*:\\s*"([A-Za-z0-9]+)"/g);
                 for (const m of playbackMatches) muxIds.add(m[1]);
-                console.log('Found playbackIds in __NEXT_DATA__');
               } catch (e) {
-                console.log('Error parsing __NEXT_DATA__:', e);
               }
             }
 
@@ -796,7 +746,6 @@ function triggerScrapeVideos(tab) {
               }
             });
 
-            console.log('Found', muxIds.size, 'unique Mux playback IDs');
 
             // Build a clean base title from page title (strip site name suffixes)
             const rawPageTitle = document.title || '';
@@ -833,7 +782,6 @@ function triggerScrapeVideos(tab) {
               }
             });
 
-            console.log('Total videos found:', videos.length);
 
             if (videos.length === 0) {
               let msg = 'No downloadable videos found on this page.';
@@ -862,19 +810,14 @@ function triggerScrapeVideos(tab) {
 
 // Handle keyboard shortcuts
 browser.commands.onCommand.addListener((command) => {
-  console.log('[DEBUG] ====== KEYBOARD COMMAND ======');
-  console.log('[DEBUG] Command:', command);
-  console.log('[DEBUG] Timestamp:', new Date().toISOString());
 
   // Get the active tab for all commands
   browser.tabs.query({ active: true, currentWindow: true }, function(tabs) {
     if (!tabs || !tabs[0]) {
-      console.error('[DEBUG] No active tab found');
       return;
     }
 
     const tab = tabs[0];
-    console.log('[DEBUG] Active tab:', tab.id, tab.url);
 
     if (command === "pick-images") {
       // Same as context menu pick-images - inject image picker
@@ -893,11 +836,6 @@ browser.commands.onCommand.addListener((command) => {
 
 // Handle context menu clicks
 browser.contextMenus.onClicked.addListener((info, tab) => {
-  console.log('[DEBUG] ====== CONTEXT MENU CLICKED ======');
-  console.log('[DEBUG] Menu item:', info.menuItemId);
-  console.log('[DEBUG] Tab ID:', tab.id);
-  console.log('[DEBUG] Tab URL:', tab.url);
-  console.log('[DEBUG] Timestamp:', new Date().toISOString());
 
   if (info.menuItemId === "download-video") {
     triggerVideoDownload(tab, info);
@@ -916,10 +854,6 @@ browser.contextMenus.onClicked.addListener((info, tab) => {
 
 // Listen for messages from content scripts
 browser.runtime.onMessage.addListener((message, sender) => {
-  console.log('[DEBUG] ====== MESSAGE FROM CONTENT SCRIPT ======');
-  console.log('[DEBUG] Action:', message.action);
-  console.log('[DEBUG] Sender tab:', sender.tab ? sender.tab.id : 'unknown');
-  console.log('[DEBUG] Full message:', message);
   
   if (message.action === "download-image") {
     sendToNativeApp({
@@ -931,7 +865,6 @@ browser.runtime.onMessage.addListener((message, sender) => {
     });
   }
   else if (message.action === "videos-found") {
-    console.log('Videos found, sending to native app:', message.videos.length);
     
     // Send to native app
     sendToNativeApp({
@@ -946,14 +879,8 @@ browser.runtime.onMessage.addListener((message, sender) => {
 
 // Send data to native app
 function sendToNativeApp(data) {
-  console.log('[DEBUG] ====== SENDING TO NATIVE APP ======');
-  console.log('[DEBUG] Timestamp:', new Date().toISOString());
-  console.log('[DEBUG] Data type:', data.type);
-  console.log('[DEBUG] URL:', data.url);
-  console.log('[DEBUG] Full payload:', JSON.stringify(data, null, 2));
 
   // Simple HTTP POST to local native app
-  console.log('[DEBUG] Making fetch request to http://127.0.0.1:5555/download');
 
   fetch('http://127.0.0.1:5555/download', {
     method: 'POST',
@@ -963,19 +890,11 @@ function sendToNativeApp(data) {
     body: JSON.stringify(data)
   })
   .then(response => {
-    console.log('[DEBUG] Fetch response received');
-    console.log('[DEBUG] Response status:', response.status);
-    console.log('[DEBUG] Response ok:', response.ok);
     return response.json();
   })
   .then(result => {
-    console.log('[DEBUG] Native app result:', result);
-    console.log('[DEBUG] ====== DOWNLOAD REQUEST COMPLETE ======');
   })
   .catch(error => {
-    console.error('[DEBUG] FETCH ERROR:', error);
-    console.error('[DEBUG] Error message:', error.message);
-    console.error('[DEBUG] Error stack:', error.stack);
     alert('Failed to connect to downloader app. Make sure it is running.');
   });
 }
