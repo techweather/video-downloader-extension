@@ -12,10 +12,10 @@ from urllib.parse import urlparse
 
 from PyQt5.QtWidgets import (QMainWindow, QWidget, QVBoxLayout, QHBoxLayout, 
                            QPushButton, QLabel, QListWidget, QListWidgetItem, 
-                           QSystemTrayIcon, QMenu, QAction, QStyle, QCheckBox, QComboBox,
+                           QSystemTrayIcon, QMenu, QAction, QCheckBox, QComboBox,
                            QFileDialog, QApplication, QDesktopWidget)
 from PyQt5.QtCore import pyqtSignal, QRect
-from PyQt5.QtGui import QResizeEvent, QMoveEvent
+from PyQt5.QtGui import QIcon, QResizeEvent, QMoveEvent
 
 from config.settings import Settings
 from core.downloader import DownloadWorker
@@ -54,6 +54,12 @@ class MainWindow(QMainWindow):
         self.settings = Settings.load()
         self._first_download_received = False  # Track first download for bring-to-front
         
+        # Set app icon (appears in dock and window title bar)
+        self._assets_dir = os.path.join(os.path.dirname(os.path.dirname(__file__)), 'assets')
+        app_icon = QIcon(os.path.join(self._assets_dir, 'app-icon.png'))
+        self.setWindowIcon(app_icon)
+        QApplication.setWindowIcon(app_icon)
+
         # Initialize UI components
         self.init_ui()
         self.init_worker()
@@ -542,7 +548,10 @@ class MainWindow(QMainWindow):
     def init_tray(self):
         """Initialize system tray icon and menu"""
         self.tray_icon = QSystemTrayIcon(self)
-        self.tray_icon.setIcon(self.style().standardIcon(QStyle.SP_ArrowDown))
+        tray_icon_path = os.path.join(self._assets_dir, 'trayIconTemplate@2x.png')
+        tray_icon = QIcon(tray_icon_path)
+        tray_icon.setIsMask(True)
+        self.tray_icon.setIcon(tray_icon)
 
         # Create tray menu
         tray_menu = QMenu()
