@@ -153,8 +153,20 @@ function detectVideoEmbeds() {
     }
   });
   
-  // Find Mux videos from thumbnails and page data
+  // Find Mux videos from <mux-player> elements, thumbnails, and page data
   const muxIds = new Set();
+
+  // Check <mux-player> web components for playback-id attribute
+  document.querySelectorAll('mux-player[playback-id]').forEach(function(player) {
+    var playbackId = player.getAttribute('playback-id');
+    if (playbackId) muxIds.add(playbackId);
+  });
+
+  // Also extract playback IDs from mux-player poster attributes (fallback if playback-id not set yet)
+  document.querySelectorAll('mux-player[poster*="image.mux.com"]').forEach(function(player) {
+    var match = player.getAttribute('poster').match(/image\.mux\.com\/([A-Za-z0-9]+)/);
+    if (match) muxIds.add(match[1]);
+  });
 
   // Check img elements for Mux thumbnail URLs
   document.querySelectorAll('img[src*="image.mux.com"]').forEach(function(img) {
@@ -204,10 +216,14 @@ function detectVideoEmbeds() {
 
     var downloadUrl = 'https://stream.mux.com/' + playbackId + '/high.mp4';
 
-    // Try to find title from nearby thumbnail element
+    // Try to find title from nearby mux-player or thumbnail element
     var title = null;
-    var thumbImg = document.querySelector('img[src*="' + playbackId + '"]');
-    if (thumbImg) title = findVideoTitle(thumbImg);
+    var muxPlayer = document.querySelector('mux-player[playback-id="' + playbackId + '"]');
+    if (muxPlayer) title = findVideoTitle(muxPlayer);
+    if (!title) {
+      var thumbImg = document.querySelector('img[src*="' + playbackId + '"]');
+      if (thumbImg) title = findVideoTitle(thumbImg);
+    }
 
     // Fall back to page title with sequence number
     if (!title) {
@@ -710,8 +726,20 @@ function triggerScrapeVideos(tab) {
               }
             });
 
-            // 9. Detect Mux videos from image.mux.com thumbnail URLs in the DOM
+            // 9. Detect Mux videos from <mux-player> elements and thumbnail URLs
             const muxIds = new Set();
+
+            // Check <mux-player> web components for playback-id attribute
+            document.querySelectorAll('mux-player[playback-id]').forEach(player => {
+              const playbackId = player.getAttribute('playback-id');
+              if (playbackId) muxIds.add(playbackId);
+            });
+
+            // Also extract from mux-player poster attributes (fallback if playback-id not hydrated yet)
+            document.querySelectorAll('mux-player[poster*="image.mux.com"]').forEach(player => {
+              const match = player.getAttribute('poster').match(/image\\.mux\\.com\\/([A-Za-z0-9]+)/);
+              if (match) muxIds.add(match[1]);
+            });
 
             // Check all img elements for Mux thumbnail URLs
             document.querySelectorAll('img[src*="image.mux.com"]').forEach(img => {
@@ -761,11 +789,13 @@ function triggerScrapeVideos(tab) {
                 processedUrls.add(downloadUrl);
                 muxIndex++;
 
-                // Try to find a title from a nearby element that uses this ID as a thumbnail
+                // Try to find a title from nearby mux-player or thumbnail element
                 let title = null;
-                const thumbImg = document.querySelector('img[src*="' + playbackId + '"]');
-                if (thumbImg) {
-                  title = findNearbyText(thumbImg);
+                const muxPlayer = document.querySelector('mux-player[playback-id="' + playbackId + '"]');
+                if (muxPlayer) title = findNearbyText(muxPlayer);
+                if (!title) {
+                  const thumbImg = document.querySelector('img[src*="' + playbackId + '"]');
+                  if (thumbImg) title = findNearbyText(thumbImg);
                 }
                 // Fall back to page title with sequence number
                 if (!title) {
