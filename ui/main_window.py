@@ -17,6 +17,7 @@ from PyQt5.QtWidgets import (QMainWindow, QWidget, QVBoxLayout, QHBoxLayout, QGr
 from PyQt5.QtCore import Qt, pyqtSignal, QRect
 from PyQt5.QtGui import QIcon
 
+from version import __version__
 from config.settings import Settings
 from core.downloader import DownloadWorker
 from core.encoder import EncodingWorker
@@ -271,6 +272,9 @@ class MainWindow(QMainWindow):
         self._ytdlp_current_version = get_ytdlp_version()
         self._ytdlp_latest_version = None  # set after background check
 
+        app_version_label = QLabel(f"dlwithit {__version__}  ·")
+        app_version_label.setStyleSheet("color: #aaa; font-size: 12px;")
+
         self.ytdlp_version_label = QLabel(f"yt-dlp: {self._ytdlp_current_version}")
         self.ytdlp_version_label.setStyleSheet("color: #aaa; font-size: 12px;")
 
@@ -279,6 +283,7 @@ class MainWindow(QMainWindow):
 
         ytdlp_row = QHBoxLayout()
         ytdlp_row.setContentsMargins(0, 0, 0, 0)
+        ytdlp_row.addWidget(app_version_label)
         ytdlp_row.addWidget(self.ytdlp_version_label)
         ytdlp_row.addWidget(self.ytdlp_status_label)
         ytdlp_row.addStretch()

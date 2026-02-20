@@ -8,6 +8,7 @@ import platform
 import subprocess
 import sys
 import requests
+from version import __version__
 from datetime import datetime
 from threading import Thread
 from urllib.parse import urlparse
@@ -360,7 +361,7 @@ Download Information:
 - URL: {self.domain_label.text()}
 
 System Information:
-- Application: dlwithit
+- Application: dlwithit {__version__}
 - Error copied at: {self._get_current_time()}
 """
             clipboard.setText(error_report)

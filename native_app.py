@@ -4,6 +4,8 @@ Native Media Downloader App
 Simple PyQt5 app that receives URLs from browser extension and downloads media
 """
 
+from version import __version__  # noqa: F401  (available for submodules)
+
 import sys
 import os
 import json

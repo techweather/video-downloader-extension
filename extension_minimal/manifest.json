@@ -1,7 +1,7 @@
 {
   "manifest_version": 2,
   "name": "dlwithit Connector",
-  "version": "2.0",
+  "version": "1.0.0",
   "description": "Browser extension for dlwithit - download images and videos from the web",
   "permissions": [
     "contextMenus",
