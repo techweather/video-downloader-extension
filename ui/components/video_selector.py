@@ -3,330 +3,276 @@ VideoSelectorDialog component for Media Downloader App
 Dialog for selecting which videos to download from a scraped page
 """
 
+import os
 import re
 
 from PyQt5.QtWidgets import (QDialog, QVBoxLayout, QHBoxLayout, QLabel,
-                           QListWidget, QListWidgetItem, QWidget, QCheckBox,
-                           QPushButton, QDialogButtonBox)
-from PyQt5.QtCore import Qt, QTimer
+                             QListWidget, QListWidgetItem, QWidget, QCheckBox,
+                             QPushButton, QAbstractItemView)
+from PyQt5.QtCore import Qt
 
 from ui.window_utils import bring_dialog_to_front
 
 
+_BTN_PRIMARY = """
+    QPushButton {
+        background: qlineargradient(x1:0, y1:0, x2:0, y2:1,
+            stop:0 #5ab0ff, stop:1 #3d8fdb);
+        color: white;
+        border: none;
+        padding: 8px 16px;
+        border-radius: 6px;
+        font-size: 12px;
+    }
+    QPushButton:hover {
+        background: qlineargradient(x1:0, y1:0, x2:0, y2:1,
+            stop:0 #4a9ff5, stop:1 #2d7ec4);
+    }
+"""
+
+_BTN_SECONDARY = """
+    QPushButton {
+        background: qlineargradient(x1:0, y1:0, x2:0, y2:1,
+            stop:0 #555555, stop:1 #444444);
+        color: #e0e0e0;
+        border: 1px solid #606060;
+        padding: 8px 16px;
+        border-radius: 6px;
+        font-size: 12px;
+    }
+    QPushButton:hover {
+        background: qlineargradient(x1:0, y1:0, x2:0, y2:1,
+            stop:0 #666666, stop:1 #555555);
+        border-color: #777;
+    }
+"""
+
+
 class VideoSelectorDialog(QDialog):
-    """
-    Dialog for selecting which videos to download from a page.
-    
-    Features:
-    - Clean display of video titles, URLs, and types
-    - Checkbox selection for each video
-    - Essential video information (filename, stream type)
-    - Select all/deselect all functionality
-    - Returns selected videos with cleaned titles
-    - Full URL display with text selection support
-    """
-    
+    """Dialog for selecting which videos to download from a page."""
+
     def __init__(self, videos, page_title, page_url, parent=None):
-        """
-        Initialize video selector dialog.
-        
-        Args:
-            videos: List of video dictionaries with metadata
-            page_title: Title of the page containing videos
-            page_url: URL of the page containing videos
-            parent: Parent widget (optional)
-        """
         super().__init__(parent)
         self.videos = videos
         self.page_title = page_title
         self.page_url = page_url
-        self.selected_videos = []
-        self.checkboxes = []
-        
-        self.setWindowTitle(f"Select Videos from {page_title}")
-        self.setModal(True)
-        self.resize(700, 500)
-        
-        layout = QVBoxLayout()
-        
-        # Header section
-        header = QLabel(f"<b>Found {len(videos)} videos on page</b>")
-        header.setStyleSheet("color: #2c3e50;")
-        layout.addWidget(header)
-        
-        # Subtitle with page URL
-        url_label = QLabel(f"<small>{page_url}</small>")
-        url_label.setWordWrap(True)
-        url_label.setStyleSheet("color: #666;")
-        layout.addWidget(url_label)
-        
-        # Video list widget
-        self.list_widget = QListWidget()
-        self.list_widget.setStyleSheet("""
-            QListWidget {
-                border: 1px solid #ddd;
-                border-radius: 4px;
-            }
-        """)
-        
-        # Store references for easy access
         self.checkboxes = []
         self.item_widgets = []
-        
-        # Create video list items
+
+        # Checkmark SVG path — assets/ is two directories up from ui/components/
+        assets_dir = os.path.join(
+            os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))),
+            'assets'
+        )
+        self._checkmark_path = os.path.join(assets_dir, 'checkmark.svg').replace('\\', '/')
+
+        self.setWindowTitle(f"Select Videos — {page_title}")
+        self.setModal(True)
+        self.resize(680, 520)
+        self.setStyleSheet("QDialog { background-color: #2d2d2d; }")
+
+        layout = QVBoxLayout()
+        layout.setContentsMargins(16, 16, 16, 16)
+        layout.setSpacing(12)
+
+        # Header
+        count = len(videos)
+        count_label = QLabel(f"Found <b>{count}</b> video{'s' if count != 1 else ''}")
+        count_label.setStyleSheet("color: #e0e0e0; font-size: 14px;")
+        layout.addWidget(count_label)
+
+        url_label = QLabel(page_url)
+        url_label.setWordWrap(True)
+        url_label.setStyleSheet("color: #888; font-size: 11px;")
+        layout.addWidget(url_label)
+
+        # Video list — transparent, no border, scrollbar overlays when needed
+        self.list_widget = QListWidget()
+        self.list_widget.setSpacing(0)
+        self.list_widget.setSelectionMode(QAbstractItemView.NoSelection)
+        self.list_widget.setFocusPolicy(Qt.NoFocus)
+        self.list_widget.setVerticalScrollBarPolicy(Qt.ScrollBarAsNeeded)
+        self.list_widget.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
+        self.list_widget.setStyleSheet("""
+            QListWidget {
+                background: transparent;
+                border: none;
+                outline: none;
+            }
+            QListWidget::item {
+                background: transparent;
+                border: none;
+            }
+            QScrollBar:vertical {
+                background: transparent;
+                width: 14px;
+                margin: 0;
+                padding: 0;
+            }
+            QScrollBar::handle:vertical {
+                background: #555;
+                border-radius: 3px;
+                min-height: 30px;
+                margin: 0 4px 0 4px;
+            }
+            QScrollBar::handle:vertical:hover {
+                background: #777;
+            }
+            QScrollBar::add-line:vertical,
+            QScrollBar::sub-line:vertical { height: 0; background: none; }
+            QScrollBar::add-page:vertical,
+            QScrollBar::sub-page:vertical { background: none; }
+        """)
+
         for i, video in enumerate(videos):
             self._create_video_item(i, video)
-        
-        # Force immediate visual update of all checkboxes
-        self.list_widget.update()
-        for checkbox in self.checkboxes:
-            checkbox.update()
-        
+
         layout.addWidget(self.list_widget)
-        
-        # Control buttons section
-        self._create_control_buttons(layout)
-        
-        # Dialog buttons (OK/Cancel)
-        self._create_dialog_buttons(layout)
-        
+
+        # Bottom row: select controls on left, action buttons on right
+        bottom_row = QHBoxLayout()
+        bottom_row.setSpacing(8)
+
+        select_all_btn = QPushButton("Select All")
+        select_all_btn.setStyleSheet(_BTN_SECONDARY)
+        select_all_btn.clicked.connect(self.select_all)
+
+        deselect_all_btn = QPushButton("Deselect All")
+        deselect_all_btn.setStyleSheet(_BTN_SECONDARY)
+        deselect_all_btn.clicked.connect(self.deselect_all)
+
+        cancel_btn = QPushButton("Cancel")
+        cancel_btn.setStyleSheet(_BTN_SECONDARY)
+        cancel_btn.clicked.connect(self.reject)
+
+        download_btn = QPushButton("Download Selected")
+        download_btn.setStyleSheet(_BTN_PRIMARY)
+        download_btn.clicked.connect(self.accept)
+
+        bottom_row.addWidget(select_all_btn)
+        bottom_row.addWidget(deselect_all_btn)
+        bottom_row.addStretch()
+        bottom_row.addWidget(cancel_btn)
+        bottom_row.addWidget(download_btn)
+
+        layout.addLayout(bottom_row)
         self.setLayout(layout)
-        
-        # Checkboxes are now set to checked during creation, no delay needed
 
     def showEvent(self, event):
-        """Handle show event to bring dialog to front"""
         super().showEvent(event)
-        # Bring dialog and parent window to front on macOS and other platforms
         bring_dialog_to_front(self, self.parent())
 
     def _create_video_item(self, index, video):
-        """
-        Create a single video item widget.
-        
-        Args:
-            index: Video index in the list
-            video: Video metadata dictionary
-        """
-        # Create the item widget container
-        item_widget = QWidget()
-        item_layout = QHBoxLayout()
-        item_layout.setContentsMargins(5, 5, 5, 5)
-        
-        # Checkbox for selection (initially checked by default)
-        checkbox = QCheckBox()
-        checkbox.setChecked(True)  # Check immediately during creation
-        
-        # Ensure checkbox styling doesn't interfere with visual state
-        checkbox.setStyleSheet("""
-            QCheckBox {
-                spacing: 5px;
-                font-size: 12px;
+        """Create a single video item widget."""
+        # Transparent container provides top/bottom gap between cards
+        container = QWidget()
+        container.setStyleSheet("background: transparent;")
+        container_layout = QVBoxLayout()
+        container_layout.setContentsMargins(0, 4, 0, 4)
+        container_layout.setSpacing(0)
+
+        # Card — matches download item visual style
+        card = QWidget()
+        card.setObjectName("videoCard")
+        card.setAttribute(Qt.WA_StyledBackground, True)
+        card.setStyleSheet("""
+            QWidget#videoCard {
+                background: qlineargradient(x1:0, y1:0, x2:0, y2:1,
+                    stop:0 #363636, stop:1 #2e2e2e);
+                border: 1px solid #404040;
+                border-radius: 10px;
             }
-            QCheckBox::indicator {
+        """)
+
+        card_layout = QHBoxLayout()
+        card_layout.setContentsMargins(12, 10, 12, 10)
+        card_layout.setSpacing(12)
+
+        # Checkbox — matches main window style with checkmark
+        checkbox = QCheckBox()
+        checkbox.setChecked(True)
+        checkbox.setStyleSheet(f"""
+            QCheckBox {{
+                spacing: 0px;
+            }}
+            QCheckBox::indicator {{
                 width: 16px;
                 height: 16px;
-            }
-            QCheckBox::indicator:checked {
-                background-color: #3498db;
-                border: 1px solid #2980b9;
-                border-radius: 3px;
-            }
-            QCheckBox::indicator:unchecked {
-                background-color: white;
-                border: 1px solid #bdc3c7;
-                border-radius: 3px;
-            }
+                border-radius: 4px;
+                border: 1px solid #555;
+                background: #444;
+            }}
+            QCheckBox::indicator:checked {{
+                background: #5ab0ff;
+                border: 1px solid #5ab0ff;
+                image: url({self._checkmark_path});
+            }}
         """)
-        
         self.checkboxes.append(checkbox)
-        
-        # Video information section (expanded to full width without thumbnails)
+
+        # Text: title + optional file details
         info_layout = QVBoxLayout()
-        
-        # Video title (full width, no truncation)
-        title = video.get('title', f'Video {index+1}')
+        info_layout.setSpacing(3)
+        info_layout.setContentsMargins(0, 0, 0, 0)
+
+        title = video.get('title', f'Video {index + 1}')
         title_label = QLabel(f"<b>{title}</b>")
-        title_label.setStyleSheet("color: #2c3e50; font-size: 14px; padding: 2px 0px;")
-        title_label.setWordWrap(True)  # Allow title to wrap to multiple lines
+        title_label.setStyleSheet("color: #e0e0e0; font-size: 13px;")
+        title_label.setWordWrap(True)
         info_layout.addWidget(title_label)
-        
-        # Video details (type, filename, etc.) - enhanced formatting
+
         details = self._format_video_details(video)
         if details:
-            details_label = QLabel(" • ".join(details))
-            details_label.setStyleSheet("color: #7f8c8d; font-size: 12px; padding: 1px 0px;")
-            details_label.setWordWrap(True)
+            details_label = QLabel(" · ".join(details))
+            details_label.setStyleSheet("color: #888; font-size: 11px;")
             info_layout.addWidget(details_label)
-        
-        # Video URL (full URL with word wrap, no truncation)
-        url = video['url']
-        url_label = QLabel(url)
-        url_label.setStyleSheet("color: #95a5a6; font-size: 11px; padding: 1px 0px;")
-        url_label.setWordWrap(True)  # Allow URL to wrap naturally
-        url_label.setTextInteractionFlags(url_label.textInteractionFlags() | Qt.TextSelectableByMouse)  # Make URL selectable
-        info_layout.addWidget(url_label)
-        
-        # Assemble item layout - checkbox on left, full-width text content on right
-        item_layout.addWidget(checkbox)
-        item_layout.addLayout(info_layout, 1)  # Give info_layout stretch factor of 1 to use full width
-        
-        item_widget.setLayout(item_layout)
-        item_widget.setStyleSheet("""
-            QWidget {
-                background: #ffffff;
-                border: 1px solid #ecf0f1;
-                border-radius: 4px;
-            }
-            QWidget:hover {
-                background: #f8f9fa;
-                border: 1px solid #bdc3c7;
-            }
-        """)
-        
-        # Add to list widget
+
+        card_layout.addWidget(checkbox, 0, Qt.AlignVCenter)
+        card_layout.addLayout(info_layout, 1)
+        card.setLayout(card_layout)
+
+        container_layout.addWidget(card)
+        container.setLayout(container_layout)
+
         list_item = QListWidgetItem()
-        list_item.setSizeHint(item_widget.minimumSizeHint())
+        list_item.setSizeHint(container.sizeHint())
         self.list_widget.addItem(list_item)
-        self.list_widget.setItemWidget(list_item, item_widget)
-        self.item_widgets.append(item_widget)
-    
+        self.list_widget.setItemWidget(list_item, container)
+        self.item_widgets.append(card)
+
     def _format_video_details(self, video):
-        """
-        Format video details for display with essential available information.
-        
-        Args:
-            video: Video metadata dictionary
-            
-        Returns:
-            List of detail strings
-        """
+        """Format video type/filename details for display."""
         details = []
-        
-        # Original filename if available
         if video.get('originalFilename'):
-            details.append(f"File: {video['originalFilename']}")
-        
-        # Video type description
+            details.append(video['originalFilename'])
         video_type = video.get('type', 'unknown')
         if video_type == 'hls':
             details.append("HLS Stream")
         elif video_type == 'direct':
-            details.append("Direct MP4")
+            details.append("MP4")
         elif video_type == 'data-attribute':
             details.append("Embedded")
-        
         return details
-    
-    def _create_control_buttons(self, layout):
-        """
-        Create select all/deselect all buttons.
-        
-        Args:
-            layout: Parent layout to add buttons to
-        """
-        button_row = QHBoxLayout()
-        
-        # Select all button
-        select_all_btn = QPushButton("Select All")
-        select_all_btn.clicked.connect(self.select_all)
-        select_all_btn.setStyleSheet("""
-            QPushButton {
-                background: #3498db;
-                color: white;
-                border: none;
-                padding: 5px 15px;
-                border-radius: 3px;
-            }
-            QPushButton:hover {
-                background: #2980b9;
-            }
-        """)
-        
-        # Deselect all button
-        deselect_all_btn = QPushButton("Deselect All")
-        deselect_all_btn.clicked.connect(self.deselect_all)
-        deselect_all_btn.setStyleSheet("""
-            QPushButton {
-                background: #95a5a6;
-                color: white;
-                border: none;
-                padding: 5px 15px;
-                border-radius: 3px;
-            }
-            QPushButton:hover {
-                background: #7f8c8d;
-            }
-        """)
-        
-        button_row.addWidget(select_all_btn)
-        button_row.addWidget(deselect_all_btn)
-        button_row.addStretch()
-        
-        layout.addLayout(button_row)
-    
-    def _create_dialog_buttons(self, layout):
-        """
-        Create OK/Cancel dialog buttons.
-        
-        Args:
-            layout: Parent layout to add buttons to
-        """
-        buttons = QDialogButtonBox(
-            QDialogButtonBox.Ok | QDialogButtonBox.Cancel,
-            parent=self
-        )
-        buttons.accepted.connect(self.accept)
-        buttons.rejected.connect(self.reject)
-        
-        # Change OK button text
-        buttons.button(QDialogButtonBox.Ok).setText("Download Selected")
-        
-        layout.addWidget(buttons)
-    
-    def check_all_initially(self):
-        """Check all checkboxes immediately (legacy method, now handled during creation)"""
-        # This method is now redundant since checkboxes are created as checked
-        # Keeping for compatibility but functionality moved to _create_video_item
-        for checkbox in self.checkboxes:
-            if not checkbox.isChecked():
-                checkbox.setChecked(True)
-        # Force immediate visual update
-        self.list_widget.repaint()
-    
-    # Removed load_thumbnail method - no longer needed without thumbnail display
-    
+
     def select_all(self):
-        """Select all videos"""
         for checkbox in self.checkboxes:
             checkbox.setChecked(True)
-    
+
     def deselect_all(self):
-        """Deselect all videos"""
         for checkbox in self.checkboxes:
             checkbox.setChecked(False)
-    
+
     def get_selected_videos(self):
-        """
-        Return list of selected video URLs and titles.
-        
-        Returns:
-            List of dictionaries containing selected video metadata
-        """
+        """Return list of selected video metadata dicts."""
         selected = []
         for i, checkbox in enumerate(self.checkboxes):
             if checkbox.isChecked():
                 video = self.videos[i]
-                
-                # Get and clean title for filename usage
-                title = video.get('title', f'Video_{i+1}')
+                title = video.get('title', f'Video_{i + 1}')
                 clean_title = re.sub(r'[^\w\s-]', '', title)
                 clean_title = re.sub(r'[-\s]+', '_', clean_title)
-                
-                # Use original filename if title is generic
                 if clean_title.startswith('Video_') and video.get('originalFilename'):
                     clean_title = video['originalFilename'].replace('.mp4', '').replace('.m4v', '')
-                
                 selected.append({
                     'url': video['url'],
                     'title': clean_title,
@@ -335,5 +281,4 @@ class VideoSelectorDialog(QDialog):
                     'thumbnail': video.get('thumbnail'),
                     'playlist_index': video.get('playlist_index')
                 })
-        
         return selected
