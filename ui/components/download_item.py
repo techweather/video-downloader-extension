@@ -14,7 +14,8 @@ from threading import Thread
 from urllib.parse import urlparse
 
 from PyQt5.QtWidgets import (QWidget, QVBoxLayout, QHBoxLayout, QPushButton,
-                             QLabel, QProgressBar, QApplication)
+                             QLabel, QProgressBar, QApplication, QDialog, QPlainTextEdit,
+                             QSizePolicy)
 from PyQt5.QtCore import Qt, QTimer
 from PyQt5.QtGui import QFont, QPixmap, QPainter, QBrush, QColor
 
@@ -28,6 +29,7 @@ class DownloadItem(QWidget):
         super().__init__()
         self.download_id = download_id
         self.full_error_message = None
+        self._url = url
 
         self.setObjectName("downloadItem")
         self.setAttribute(Qt.WA_StyledBackground, True)  # required for QWidget to paint stylesheet bg
@@ -128,9 +130,9 @@ class DownloadItem(QWidget):
         """)
         self.cancel_btn.hide()
 
-        self.copy_error_btn = QPushButton("Copy Error")
-        self.copy_error_btn.setFixedWidth(110)
-        self.copy_error_btn.setStyleSheet("""
+        self.report_error_btn = QPushButton("Report Error")
+        self.report_error_btn.setFixedWidth(110)
+        self.report_error_btn.setStyleSheet("""
             QPushButton {
                 background: qlineargradient(x1:0, y1:0, x2:0, y2:1,
                     stop:0 #fbbf24, stop:1 #d97706);
@@ -145,11 +147,11 @@ class DownloadItem(QWidget):
                     stop:0 #f59e0b, stop:1 #b45309);
             }
         """)
-        self.copy_error_btn.hide()
-        self.copy_error_btn.clicked.connect(self.copy_error_to_clipboard)
+        self.report_error_btn.hide()
+        self.report_error_btn.clicked.connect(self.show_error_report_dialog)
 
         action_layout.addWidget(self.cancel_btn)
-        action_layout.addWidget(self.copy_error_btn)
+        action_layout.addWidget(self.report_error_btn)
         self.action_widget.setLayout(action_layout)
 
         main_layout.addWidget(self.thumbnail_label)
@@ -280,11 +282,12 @@ class DownloadItem(QWidget):
     def set_error(self, short_error, full_error):
         """Set error information for this download."""
         self.full_error_message = full_error
+        self._error_type = "Encoding Error" if full_error.startswith("Encoding Error") else "Download Error"
         self.status_label.setAlignment(Qt.AlignLeft | Qt.AlignVCenter)
         self.status_label.setText(f"Failed: {short_error}")
         self.status_label.setStyleSheet("color: #f87171;")
         self.cancel_btn.hide()
-        self.copy_error_btn.show()
+        self.report_error_btn.show()
         self._apply_border_style("rgba(248,113,113,0.31)")
 
     def set_reveal(self, path, is_folder=False):
@@ -342,33 +345,46 @@ class DownloadItem(QWidget):
         reveal_btn.clicked.connect(reveal)
         self.action_widget.layout().addWidget(reveal_btn)
 
-    def copy_error_to_clipboard(self):
-        """Copy the full error message to clipboard."""
-        if self.full_error_message:
-            clipboard = QApplication.clipboard()
-            title_text = self.title_label.text().replace('<b>', '').replace('</b>', '')
-            error_report = f"""Download Error Report
-{'='*50}
-Download ID: {self.download_id}
-Status: Failed
-Time: {self._get_current_time()}
+    def _clipboard_error_text(self):
+        """Format error details as plain text for clipboard."""
+        title_text = self.title_label.text().replace('<b>', '').replace('</b>', '')
+        return (
+            f"Download Error Report\n{'=' * 50}\n"
+            f"Download ID: {self.download_id}\n"
+            f"Status: Failed\n"
+            f"Time: {self._get_current_time()}\n\n"
+            f"Error Details:\n{self.full_error_message}\n\n"
+            f"Download Information:\n"
+            f"- Title: {title_text}\n"
+            f"- URL: {self._url}\n\n"
+            f"System Information:\n"
+            f"- Application: dlwithit {__version__}\n"
+            f"- Error copied at: {self._get_current_time()}\n"
+        )
 
-Error Details:
-{self.full_error_message}
-
-Download Information:
-- Title: {title_text}
-- URL: {self.domain_label.text()}
-
-System Information:
-- Application: dlwithit {__version__}
-- Error copied at: {self._get_current_time()}
-"""
-            clipboard.setText(error_report)
-
-            original_text = self.copy_error_btn.text()
-            self.copy_error_btn.setText("Copied!")
-            self.copy_error_btn.setStyleSheet("""
+    def show_error_report_dialog(self):
+        """Open the error report dialog."""
+        if not self.full_error_message:
+            return
+        from core.error_reporter import clean_error_text
+        error_type = getattr(self, '_error_type', 'Download Error')
+        preview = (
+            f"Error Type: {error_type}\n\n"
+            f"Error Details:\n{clean_error_text(self.full_error_message)}\n\n"
+            f"URL: {self._url}\n"
+            f"App Version: {__version__}"
+        )
+        error_info = {
+            'error_type': error_type,
+            'error_message': self.full_error_message,
+            'url': self._url,
+            'clipboard_text': self._clipboard_error_text(),
+            'preview_text': preview,
+        }
+        dialog = ErrorReportDialog(error_info, parent=self)
+        if dialog.exec_() == QDialog.Accepted:
+            self.report_error_btn.setText("Sent!")
+            self.report_error_btn.setStyleSheet("""
                 QPushButton {
                     background: qlineargradient(x1:0, y1:0, x2:0, y2:1,
                         stop:0 #34d399, stop:1 #059669);
@@ -379,18 +395,18 @@ System Information:
                     font-size: 11px;
                 }
             """)
-            QTimer.singleShot(2000, lambda: self._reset_copy_button(original_text))
+            QTimer.singleShot(2000, self._reset_report_button)
 
-    def _reset_copy_button(self, original_text):
-        """Reset the copy button to original state."""
-        self.copy_error_btn.setText(original_text)
-        self.copy_error_btn.setStyleSheet("""
+    def _reset_report_button(self):
+        """Reset the report button to its default state."""
+        self.report_error_btn.setText("Report Error")
+        self.report_error_btn.setStyleSheet("""
             QPushButton {
                 background: qlineargradient(x1:0, y1:0, x2:0, y2:1,
                     stop:0 #fbbf24, stop:1 #d97706);
                 color: white;
                 border: none;
-                padding: 5px 8px;
+                padding: 6px 8px;
                 border-radius: 5px;
                 font-size: 11px;
             }
@@ -411,3 +427,128 @@ System Information:
     def _get_url_from_ui(self):
         """Extract URL from UI elements."""
         return self.domain_label.text()
+
+
+class ErrorReportDialog(QDialog):
+    """Dialog that lets the user send an anonymous error report or copy details."""
+
+    _BTN_SECONDARY = """
+        QPushButton {
+            background: #3a3a3a;
+            border: 1px solid #555;
+            border-radius: 6px;
+            color: #ccc;
+            padding: 8px 16px;
+            font-size: 12px;
+        }
+        QPushButton:hover { background: #4a4a4a; border-color: #666; }
+    """
+    _BTN_PRIMARY = """
+        QPushButton {
+            background: qlineargradient(x1:0, y1:0, x2:0, y2:1,
+                stop:0 #5ab0ff, stop:1 #3d8fdb);
+            border: none;
+            border-radius: 6px;
+            color: white;
+            padding: 8px 20px;
+            font-size: 13px;
+        }
+        QPushButton:hover {
+            background: qlineargradient(x1:0, y1:0, x2:0, y2:1,
+                stop:0 #4a9ff5, stop:1 #2d7ec4);
+        }
+        QPushButton:disabled { background: #555; color: #888; }
+    """
+
+    def __init__(self, error_info: dict, parent=None):
+        super().__init__(parent)
+        self.error_info = error_info
+        self.setWindowTitle("Report Error")
+        self.setMinimumSize(380, 300)
+        self.setModal(True)
+        self.setStyleSheet("QDialog { background: #2d2d2d; }")
+        self._build_ui()
+
+    def _build_ui(self):
+        layout = QVBoxLayout(self)
+        layout.setContentsMargins(20, 20, 20, 20)
+        layout.setSpacing(14)
+
+        title = QLabel("Report Error")
+        title.setStyleSheet("font-size: 16px; font-weight: bold; color: #e0e0e0;")
+        layout.addWidget(title)
+
+        desc = QLabel(
+            "Send error details anonymously to help improve dlwithit. "
+            "No email or account required.\n\n"
+            "Includes: error type, page URL, app version."
+        )
+        desc.setWordWrap(True)
+        desc.setStyleSheet("color: #aaa; font-size: 12px;")
+        layout.addWidget(desc)
+
+        # Scrollable preview of what will be sent
+        preview_text = self.error_info.get('preview_text', '')
+        self._preview = QPlainTextEdit(preview_text)
+        self._preview.setReadOnly(True)
+        self._preview.setMinimumHeight(100)
+        self._preview.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
+        self._preview.setStyleSheet("""
+            QPlainTextEdit {
+                background: #252525;
+                color: #aaa;
+                font-family: monospace;
+                font-size: 11px;
+                border: 1px solid #404040;
+                border-radius: 6px;
+                padding: 6px;
+            }
+        """)
+        layout.addWidget(self._preview)
+
+        # Single button row: [Copy to Clipboard] <stretch> [Cancel] [Send Report]
+        btn_row = QHBoxLayout()
+        btn_row.setSpacing(8)
+
+        copy_btn = QPushButton("Copy to Clipboard")
+        copy_btn.setStyleSheet(self._BTN_SECONDARY)
+        copy_btn.clicked.connect(self._copy_to_clipboard)
+        btn_row.addWidget(copy_btn)
+
+        btn_row.addStretch()
+
+        cancel_btn = QPushButton("Cancel")
+        cancel_btn.setStyleSheet(self._BTN_SECONDARY)
+        cancel_btn.clicked.connect(self.reject)
+        btn_row.addWidget(cancel_btn)
+
+        self._send_btn = QPushButton("Send Report")
+        self._send_btn.setStyleSheet(self._BTN_PRIMARY)
+        self._send_btn.clicked.connect(self._send_report)
+        btn_row.addWidget(self._send_btn)
+
+        layout.addLayout(btn_row)
+
+    def _copy_to_clipboard(self):
+        QApplication.clipboard().setText(self.error_info.get('preview_text', ''))
+
+    def _send_report(self):
+        self._send_btn.setEnabled(False)
+        self._send_btn.setText("Sending…")
+
+        from core.error_reporter import send_error_report
+        success = send_error_report(
+            error_type=self.error_info.get('error_type', 'Unknown'),
+            error_message=self.error_info.get('error_message', ''),
+            url=self.error_info.get('url', ''),
+        )
+
+        if success:
+            self.accept()
+        else:
+            # Sending failed — let user copy manually instead
+            self._send_btn.setText("Send failed")
+            QTimer.singleShot(2000, lambda: (
+                self._send_btn.setText("Send Report"),
+                self._send_btn.setEnabled(True),
+            ))

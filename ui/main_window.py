@@ -272,22 +272,24 @@ class MainWindow(QMainWindow):
         self._ytdlp_current_version = get_ytdlp_version()
         self._ytdlp_latest_version = None  # set after background check
 
-        app_version_label = QLabel(f"dlwithit {__version__}  ·")
-        app_version_label.setStyleSheet("color: #aaa; font-size: 12px;")
-
         self.ytdlp_version_label = QLabel(f"yt-dlp: {self._ytdlp_current_version}")
         self.ytdlp_version_label.setStyleSheet("color: #aaa; font-size: 12px;")
 
         self.ytdlp_status_label = QLabel("checking for updates...")
         self.ytdlp_status_label.setStyleSheet("color: #999; font-size: 12px; font-style: italic;")
 
-        ytdlp_row = QHBoxLayout()
-        ytdlp_row.setContentsMargins(0, 0, 0, 0)
-        ytdlp_row.addWidget(app_version_label)
-        ytdlp_row.addWidget(self.ytdlp_version_label)
-        ytdlp_row.addWidget(self.ytdlp_status_label)
-        ytdlp_row.addStretch()
-        settings_layout.addLayout(ytdlp_row)
+        app_version_label = QLabel(f"dlwithit {__version__}")
+        app_version_label.setStyleSheet("color: #aaa; font-size: 12px;")
+        app_version_label.setAlignment(Qt.AlignRight)
+
+        version_row = QHBoxLayout()
+        version_row.setContentsMargins(0, 0, 0, 0)
+        version_row.setSpacing(6)
+        version_row.addWidget(self.ytdlp_version_label)
+        version_row.addWidget(self.ytdlp_status_label)
+        version_row.addStretch()
+        version_row.addWidget(app_version_label)
+        settings_layout.addLayout(version_row)
 
         settings_widget.setLayout(settings_layout)
         settings_widget.setStyleSheet("""
