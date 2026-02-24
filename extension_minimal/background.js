@@ -359,7 +359,7 @@ function triggerScrapeVideos(tab) {
     code: `
       (function() {
         if (confirm("📄 IMPORTANT: Video Detection Tips\\n\\n" +
-                   "✅ For best results, SCROLL through the entire page first!\\n" +
+                   "✅ Scroll through the page first to find all videos\\n" +
                    "✅ This loads lazy-loaded videos and dynamic content\\n" +
                    "✅ Wait for videos to appear before running this scan\\n\\n" +
                    "Many modern websites only load videos when they come into view.\\n\\n" +
