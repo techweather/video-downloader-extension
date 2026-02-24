@@ -389,7 +389,7 @@ class MainWindow(QMainWindow):
         if self.settings['use_custom_location']:
             path = self.settings['custom_location']
         else:
-            path = str(Path.home() / 'Downloads' / 'Media')
+            path = str(Path.home() / 'Downloads' / 'dlwithit')
         
         # Replace home directory with ~
         home = str(Path.home())
@@ -401,7 +401,7 @@ class MainWindow(QMainWindow):
     def change_save_location(self):
         """Open folder picker dialog"""
         current_path = (self.settings['custom_location'] if self.settings['use_custom_location'] 
-                       else str(Path.home() / 'Downloads' / 'Media'))
+                       else str(Path.home() / 'Downloads' / 'dlwithit'))
         
         folder = QFileDialog.getExistingDirectory(
             self,
@@ -573,7 +573,7 @@ class MainWindow(QMainWindow):
         if self.settings['use_custom_location']:
             return self.settings['custom_location']
         else:
-            return str(Path.home() / 'Downloads' / 'Media')
+            return str(Path.home() / 'Downloads' / 'dlwithit')
     
     def add_download(self, data):
         """

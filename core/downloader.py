@@ -90,7 +90,7 @@ class DownloadWorker(QThread):
         
         # Get current download info for directory scanning
         download_info = getattr(self, 'current_download_info', {})
-        save_path = download_info.get('save_path', str(Path.home() / 'Downloads' / 'Media'))
+        save_path = download_info.get('save_path', str(Path.home() / 'Downloads' / 'dlwithit'))
         
         # Clean up tracked files
         files_to_remove = list(self.partial_files)
@@ -559,7 +559,7 @@ class DownloadWorker(QThread):
                 
             try:
                 # Get the save path and settings for this download
-                save_path = download.get('save_path', str(Path.home() / 'Downloads' / 'Media'))
+                save_path = download.get('save_path', str(Path.home() / 'Downloads' / 'dlwithit'))
                 organize_by_platform = download.get('organize_by_platform', True)
                 metadata_option = download.get('metadata_option', 'none')
                 
@@ -588,7 +588,7 @@ class DownloadWorker(QThread):
                     self.status_update.emit(self.current_download_id, 'downloading')
                     referrer = download.get('referrer')
                     title = download.get('title', 'video')
-                    save_path = download.get('save_path', str(Path.home() / 'Downloads' / 'Media'))
+                    save_path = download.get('save_path', str(Path.home() / 'Downloads' / 'dlwithit'))
                     organize_by_platform = download.get('organize_by_platform', True)
                     
                     # Create videos directory if organizing
