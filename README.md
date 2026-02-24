@@ -77,7 +77,7 @@ These can be customized in Firefox's extension shortcut settings (`about:addons`
 
 ## Settings
 
-- **Save location** — default `~/Downloads/Media`, or set a custom folder
+- **Save location** — default `~/Downloads/dlwithit`, or set a custom folder
 - **Organize by platform** — auto-create subfolders for YouTube, Instagram, etc.
 - **Metadata** — none, embedded in file, or sidecar files
 - **Auto-encode VP9** — convert WebM/VP9 to H.264 MP4 after download

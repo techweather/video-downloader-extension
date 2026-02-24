@@ -5,6 +5,7 @@ Embeds source URLs and metadata into downloaded images and videos
 
 import subprocess
 import os
+import sys
 import shutil
 from pathlib import Path
 from datetime import datetime
@@ -14,16 +15,47 @@ import logging
 logger = logging.getLogger(__name__)
 
 
+def _exiftool_cmd():
+    """
+    Return the exiftool invocation as a list ready for subprocess, or None if unavailable.
+
+    Bundled app layout (PyInstaller datas):
+        Contents/Resources/exiftool_bundle/exiftool          ← Perl script
+        Contents/Resources/exiftool_bundle/lib/Image/        ← Image::ExifTool
+
+    We call  /usr/bin/perl -I<lib_dir> <script>  explicitly instead of running the
+    script directly, which sidesteps the shebang + Homebrew-hardcoded-@INC problem.
+    The hardcoded paths baked into the script's BEGIN block don't exist on other
+    machines, so Perl falls through to our -I path and finds Image::ExifTool there.
+
+    In development, we just delegate to whatever 'exiftool' is on PATH.
+    """
+    if getattr(sys, 'frozen', False):
+        # --- Bundled .app: use the exiftool we shipped ---
+        contents_dir = os.path.dirname(os.path.dirname(sys.executable))
+        bundle = os.path.join(contents_dir, 'Resources', 'exiftool_bundle')
+        script = os.path.join(bundle, 'exiftool')
+        lib    = os.path.join(bundle, 'lib')
+        if os.path.exists(script):
+            return ['/usr/bin/perl', f'-I{lib}', script]
+        # Fall back to a Homebrew install if someone runs the frozen app in dev
+        for path in ['/opt/homebrew/bin/exiftool', '/usr/local/bin/exiftool']:
+            if os.path.exists(path):
+                return [path]
+        return None  # Not available — metadata embedding will be skipped
+
+    # --- Development: rely on PATH ---
+    return ['exiftool']
+
+
 def is_exiftool_available():
-    """
-    Check if exiftool is available on the system
-    
-    Returns:
-        bool: True if exiftool is available, False otherwise
-    """
+    """Check if exiftool is available."""
+    cmd = _exiftool_cmd()
+    if cmd is None:
+        return False
     try:
-        result = subprocess.run(['exiftool', '-ver'], 
-                              capture_output=True, text=True, timeout=5)
+        result = subprocess.run(cmd + ['-ver'],
+                                capture_output=True, text=True, timeout=5)
         return result.returncode == 0
     except (subprocess.TimeoutExpired, FileNotFoundError, OSError):
         return False
@@ -56,12 +88,11 @@ def embed_image_metadata(filepath, source_url, page_title=None, download_date=No
     
     try:
         # Build exiftool command with metadata tags
-        cmd = [
-            'exiftool',
+        cmd = _exiftool_cmd() + [
             '-overwrite_original',  # Don't create .bak files
             '-quiet',  # Suppress normal output
         ]
-        
+
         # Add source URL to multiple fields for compatibility
         cmd.extend([
             f'-XMP:Source={source_url}',
@@ -122,12 +153,11 @@ def embed_video_metadata(filepath, source_url, title=None, description=None, upl
     
     try:
         # Build exiftool command with metadata tags
-        cmd = [
-            'exiftool',
+        cmd = _exiftool_cmd() + [
             '-overwrite_original',  # Don't create .bak files
             '-quiet',  # Suppress normal output
         ]
-        
+
         # Build comment field with source URL and description
         comment_parts = [f"Source: {source_url}"]
         if description:
@@ -218,9 +248,8 @@ def get_embedded_metadata(filepath):
         return {}
     
     try:
-        cmd = [
-            'exiftool',
-            '-json',  # Output as JSON
+        cmd = _exiftool_cmd() + [
+            '-json',   # Output as JSON
             '-quiet',  # Suppress normal output
             filepath
         ]
@@ -249,8 +278,8 @@ def check_exiftool_installation():
     """
     if is_exiftool_available():
         try:
-            result = subprocess.run(['exiftool', '-ver'], 
-                                  capture_output=True, text=True, timeout=5)
+            result = subprocess.run(_exiftool_cmd() + ['-ver'],
+                                    capture_output=True, text=True, timeout=5)
             version = result.stdout.strip()
             return True, f"exiftool version {version} is installed and ready"
         except Exception:

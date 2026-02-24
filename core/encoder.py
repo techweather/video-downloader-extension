@@ -3,59 +3,75 @@ Video encoding functionality for Media Downloader App
 """
 
 import os
+import sys
 import json
 import subprocess
 from pathlib import Path
 from queue import Queue
 from typing import Optional, Callable, Dict, Any
 
+
+def get_ffmpeg_bin() -> str:
+    """Return the absolute path to ffmpeg, whether running from source or a bundled .app."""
+    if getattr(sys, 'frozen', False):
+        # Bundled macOS .app: sys.executable is Contents/MacOS/<name>
+        # PyInstaller places ffmpeg in Contents/Frameworks/
+        contents_dir = os.path.dirname(os.path.dirname(sys.executable))
+        return os.path.join(contents_dir, 'Frameworks', 'ffmpeg')
+    return 'ffmpeg'
+
+
+def get_ffprobe_bin() -> str:
+    """Return the absolute path to ffprobe, whether running from source or a bundled .app."""
+    if getattr(sys, 'frozen', False):
+        contents_dir = os.path.dirname(os.path.dirname(sys.executable))
+        return os.path.join(contents_dir, 'Frameworks', 'ffprobe')
+    return 'ffprobe'
+
+
+def get_ffmpeg_dir() -> Optional[str]:
+    """
+    Return the directory containing ffmpeg/ffprobe for yt-dlp's ffmpeg_location option.
+    Returns None in dev (yt-dlp uses PATH), absolute dir path when bundled.
+    """
+    if getattr(sys, 'frozen', False):
+        contents_dir = os.path.dirname(os.path.dirname(sys.executable))
+        return os.path.join(contents_dir, 'Frameworks')
+    return None
+
 from PyQt5.QtCore import QThread, pyqtSignal
 
 from .metadata import embed_video_metadata
 
 
-def needs_encoding_check(video_info_or_path) -> bool:
+def detect_video_codec(filepath: str) -> Optional[str]:
     """
-    Check if a video needs encoding based on codec and container information or file extension.
-    
-    Args:
-        video_info_or_path: Dictionary containing video metadata from yt-dlp, or string file path
-        
-    Returns:
-        bool: True if video needs encoding to H.264, False otherwise
+    Detect the video codec of an actual file using ffprobe.
+
+    Returns the codec name (e.g. 'vp9', 'h264', 'av1') or None on failure.
     """
-    # Handle string path input (for direct-video downloads)
-    if isinstance(video_info_or_path, str):
-        filepath = video_info_or_path.lower()
-        needs_encoding = filepath.endswith('.webm')
-        return needs_encoding
-    
-    # Handle dictionary input (for yt-dlp downloads)
-    video_info = video_info_or_path
-    vcodec = str(video_info.get('vcodec', '')).lower()
-    acodec = str(video_info.get('acodec', '')).lower()
-    ext = str(video_info.get('ext', '')).lower()
-    
-    
-    # Check individual conditions
-    conditions = [
-        ('vp9 in vcodec', 'vp9' in vcodec),
-        ('vp09 in vcodec', 'vp09' in vcodec),
-        ('vp8 in vcodec', 'vp8' in vcodec),
-        ('vp08 in vcodec', 'vp08' in vcodec),
-        ('av01 in vcodec', 'av01' in vcodec),
-        ('av1 in vcodec', 'av1' in vcodec),
-        ('ext == webm', ext == 'webm')
-    ]
-    
-    needs_encoding = False
-    matching_conditions = []
-    for condition_name, condition_result in conditions:
-        if condition_result:
-            matching_conditions.append(condition_name)
-            needs_encoding = True
-    
-    return needs_encoding
+    ffprobe = get_ffprobe_bin()
+    try:
+        result = subprocess.run(
+            [ffprobe, '-v', 'error', '-select_streams', 'v:0',
+             '-show_entries', 'stream=codec_name', '-of', 'csv=p=0', filepath],
+            capture_output=True, text=True, timeout=30
+        )
+        codec = result.stdout.strip().lower()
+        return codec if codec else None
+    except Exception:
+        return None
+
+
+def file_needs_encoding(filepath: str) -> bool:
+    """
+    Check whether a downloaded file needs VP9/VP8/AV1 → H.264 encoding.
+
+    Uses ffprobe on the actual file, so this is reliable regardless of which
+    format yt-dlp selected during download.
+    """
+    codec = detect_video_codec(filepath)
+    return codec in ('vp9', 'vp8', 'av1', 'vp09', 'vp08', 'av01')
 
 
 class VideoEncoder:
@@ -96,13 +112,13 @@ class VideoEncoder:
         try:
             output_path = input_path.rsplit('.', 1)[0] + '_h264.mp4'
             self._cancelled = False
-            
+
             # Get video duration first for progress calculation
             duration = self._get_video_duration(input_path)
             
             # FFmpeg command for encoding
             cmd = [
-                'ffmpeg', '-i', input_path,
+                get_ffmpeg_bin(), '-i', input_path,
                 '-c:v', 'libx264', '-preset', 'medium', '-crf', '23',
                 '-c:a', 'aac', '-b:a', '128k',
                 '-progress', 'pipe:1',
@@ -111,14 +127,28 @@ class VideoEncoder:
                 output_path
             ]
             
-            # Start encoding process
+            # Start encoding process.
+            # stderr is drained on a background thread to avoid pipe-buffer deadlock
+            # while we read stdout for progress. Captured so failures are visible.
+            import threading
+            stderr_lines = []
+
             self.active_process = subprocess.Popen(
                 cmd,
                 stdout=subprocess.PIPE,
-                stderr=subprocess.DEVNULL,
+                stderr=subprocess.PIPE,
                 universal_newlines=True
             )
-            
+
+            def _drain_stderr(pipe):
+                for line in pipe:
+                    stderr_lines.append(line)
+
+            stderr_thread = threading.Thread(target=_drain_stderr,
+                                             args=(self.active_process.stderr,),
+                                             daemon=True)
+            stderr_thread.start()
+
             # Parse ffmpeg progress output
             for line in self.active_process.stdout:
                 if self._cancelled:
@@ -141,16 +171,20 @@ class VideoEncoder:
                     except:
                         pass
             
-            # Wait for process to complete
+            # Wait for process to complete, then collect stderr
             self.active_process.wait()
-            
+            stderr_thread.join()
+
             if self.active_process.returncode == 0:
-                # Encoding successful
                 if not keep_original:
                     os.remove(input_path)
                 return output_path
             else:
-                # Encoding failed
+                # Encoding failed — log ffmpeg's stderr so the cause is visible
+                error_output = ''.join(stderr_lines).strip()
+                print(f"[encoder] ffmpeg failed (exit {self.active_process.returncode})")
+                if error_output:
+                    print(f"[encoder] ffmpeg stderr:\n{error_output}")
                 return None
                 
         except Exception as e:
@@ -171,7 +205,7 @@ class VideoEncoder:
         """
         try:
             probe_cmd = [
-                'ffprobe', '-v', 'error', 
+                get_ffprobe_bin(), '-v', 'error',
                 '-show_entries', 'format=duration', 
                 '-of', 'json', 
                 video_path

@@ -6,7 +6,7 @@ import json
 from pathlib import Path
 
 # Settings file path
-SETTINGS_FILE = Path.home() / '.media_downloader_settings.json'
+SETTINGS_FILE = Path.home() / '.dlwithit_settings.json'
 
 class Settings:
     """Manage application settings"""
@@ -21,7 +21,7 @@ class Settings:
                 pass
         return {
             'use_custom_location': False,
-            'custom_location': str(Path.home() / 'Downloads' / 'Media'),
+            'custom_location': str(Path.home() / 'Downloads' / 'dlwithit'),
             'encode_vp9': True,
             'keep_original': False,
             'organize_by_platform': True,

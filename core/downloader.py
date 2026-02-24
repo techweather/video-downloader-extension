@@ -12,8 +12,9 @@ from urllib.parse import urlparse, unquote
 from PyQt5.QtCore import QThread, pyqtSignal
 import yt_dlp
 
-from .encoder import VideoEncoder, needs_encoding_check
+from .encoder import VideoEncoder, file_needs_encoding, get_ffmpeg_dir
 from .metadata import embed_image_metadata, embed_video_metadata
+
 
 class YtDlpLogger:
     """Custom logger to capture yt-dlp messages, including skip notifications."""
@@ -762,6 +763,12 @@ class DownloadWorker(QThread):
                             'ffmpeg_i': ['-allowed_extensions', 'ALL', '-extension_picky', '0']
                         }
                     }
+
+                    # When running as a bundled .app, PATH doesn't include Homebrew so yt-dlp
+                    # can't find ffmpeg on its own. Point it explicitly to the bundled binary.
+                    ffmpeg_dir = get_ffmpeg_dir()
+                    if ffmpeg_dir:
+                        ydl_opts['ffmpeg_location'] = ffmpeg_dir
                     
                     # Add referrer headers if available
                     referrer = download.get('referrer')
@@ -848,9 +855,6 @@ class DownloadWorker(QThread):
                         else:
                             raise extract_error  # Re-raise original error
                     
-                    # Check if video needs encoding
-                    needs_encoding = needs_encoding_check(info)
-
                     # Check if yt-dlp's title is useless (generic/HLS sources)
                     ytdlp_title_is_useless = (
                         info.get('extractor', '').lower() == 'generic' and
@@ -1256,8 +1260,8 @@ Possible Causes:
                                 # NOTE: If we reach here, skip was NOT detected (continue would have skipped this)
                                 
                                 encode_setting = download.get('encode_vp9', True)
-                                
-                                if needs_encoding and encode_setting:
+
+                                if encode_setting and file_needs_encoding(final_path):
                                     # Emit encoding_needed signal - EncodingWorker will handle the actual encoding
                                     metadata_info = {
                                         'metadata_option': download.get('metadata_option'),
