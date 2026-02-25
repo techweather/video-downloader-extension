@@ -660,7 +660,7 @@ class DownloadWorker(QThread):
                     if self.current_download_id not in self.cancelled_downloads:
                         # Check if direct-video file needs encoding
                         
-                        needs_encoding = needs_encoding_check(str(filepath))
+                        needs_encoding = file_needs_encoding(str(filepath))
                         encode_setting = download.get('encode_vp9', True)
                         
                         
