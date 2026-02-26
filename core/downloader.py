@@ -607,13 +607,13 @@ class DownloadWorker(QThread):
                     filename = f"{safe_title}{ext}"
                     
                     filepath = video_dir / filename
-                    
-                    # Handle duplicates
-                    counter = 1
-                    while filepath.exists():
-                        filepath = video_dir / f"{title}_{counter}{ext}"
-                        counter += 1
-                    
+
+                    # Skip if file already exists (consistent with yt-dlp behavior)
+                    if filepath.exists():
+                        skip_reason = f"File already exists: {filename}"
+                        self.download_skipped.emit(self.current_download_id, skip_reason, str(filepath))
+                        continue
+
                     # Track this file for cleanup if cancelled
                     self.partial_files.add(str(filepath))
                     
@@ -1173,7 +1173,7 @@ class DownloadWorker(QThread):
 
 
                                 for file_path in downloaded_files:
-                                    if needs_encoding and encode_setting:
+                                    if encode_setting and file_needs_encoding(file_path):
                                         metadata_info = {
                                             'metadata_option': download.get('metadata_option'),
                                             'info': info,
