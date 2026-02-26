@@ -294,10 +294,15 @@
   // Handle click
   function onClick(e) {
     if (!picking) return;
-    
+
+    // Let clicks inside our own UI elements (selector popup, highlight box)
+    // pass through so their own handlers (item.onclick, close button) still fire.
+    if (activeSelector && activeSelector.contains(e.target)) return;
+    if (highlightBox && highlightBox.contains(e.target)) return;
+
     e.preventDefault();
     e.stopPropagation();
-    
+
     const images = findImagesAtPoint(e.clientX, e.clientY, e.target);
     
     // Filter out placeholder images before showing selector
@@ -647,7 +652,7 @@
     }
     
     document.removeEventListener('mousemove', onMouseMove);
-    document.removeEventListener('click', onClick);
+    document.removeEventListener('click', onClick, true);
     document.removeEventListener('keydown', onKeyDown);
     
     if (highlightBox) {
@@ -662,7 +667,9 @@
   // Initialize
   createHighlightBox();
   document.addEventListener('mousemove', onMouseMove);
-  document.addEventListener('click', onClick);
+  // Use capture phase so our handler runs before page scripts (e.g. Apple's
+  // scroll-interaction overlays) that call stopPropagation in capture phase.
+  document.addEventListener('click', onClick, true);
   document.addEventListener('keydown', onKeyDown);
   
   // Show initial message
