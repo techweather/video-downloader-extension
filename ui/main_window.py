@@ -696,12 +696,23 @@ class MainWindow(QMainWindow):
                     # Process each selected video
                     for video_info in selected:
                         url = video_info['url']
-                        
-                        # Check if this should use yt-dlp (video type) or direct download (direct-video type)
-                        if (video_info.get('type') == 'hls' or 
+                        video_type = video_info.get('type', 'direct')
+
+                        # Types from the extension that always mean direct file download.
+                        # Includes HTML MIME types (e.g. 'video/mp4' from <source type="...">)
+                        # and extension-defined type strings.
+                        DIRECT_TYPES = {
+                            'direct', 'srcset', 'data-attribute', 'script-json',
+                            'preload', 'mux', 'meta-tag',
+                            'video/mp4', 'video/webm', 'video/quicktime',
+                            'video/x-m4v', 'video/ogg', 'video/x-matroska',
+                        }
+
+                        # Check if this should use yt-dlp (HLS or platform URL)
+                        if (video_type == 'hls' or
                             url.endswith('.m3u8') or
                             'vimeo.com' in url or
-                            'youtube.com' in url or 
+                            'youtube.com' in url or
                             'youtu.be' in url or
                             'instagram.com' in url or
                             'tiktok.com' in url):
@@ -716,10 +727,14 @@ class MainWindow(QMainWindow):
                             }
                             self.add_download(download_data)
                         else:
-                            # Check if it's actually a direct file URL
-                            is_direct_file = (url.endswith(('.mp4', '.webm', '.mov', '.avi', '.mkv', '.m4v')) or
-                                            any(ext in url.lower() for ext in ['.mp4?', '.webm?', '.mov?']))
-                            
+                            # Determine if this is a direct file download.
+                            # Trust the extension's type field first; fall back to URL extension.
+                            is_direct_file = (
+                                video_type in DIRECT_TYPES or
+                                url.endswith(('.mp4', '.webm', '.mov', '.avi', '.mkv', '.m4v')) or
+                                any(ext in url.lower() for ext in ['.mp4?', '.webm?', '.mov?'])
+                            )
+
                             if is_direct_file:
                                 # Direct file - use direct download
                                 download_data = {
@@ -731,7 +746,7 @@ class MainWindow(QMainWindow):
                                 }
                                 self.add_direct_video_download(download_data)
                             else:
-                                # Unknown format - default to yt-dlp to be safe
+                                # Unknown format - use yt-dlp as last resort
                                 download_data = {
                                     'url': url,
                                     'title': video_info.get('title', 'Video'),
@@ -792,15 +807,23 @@ class MainWindow(QMainWindow):
                     # Process each selected video (same logic as handle_video_list)
                     for video_info in selected:
                         url = video_info['url']
-                        
-                        # Check if this should use yt-dlp (video type) or direct download (direct-video type)
-                        if ('vimeo.com' in url or
-                            'youtube.com' in url or 
+                        video_type = video_info.get('type', 'direct')
+
+                        DIRECT_TYPES = {
+                            'direct', 'srcset', 'data-attribute', 'script-json',
+                            'preload', 'mux', 'meta-tag',
+                            'video/mp4', 'video/webm', 'video/quicktime',
+                            'video/x-m4v', 'video/ogg', 'video/x-matroska',
+                        }
+
+                        # Check if this should use yt-dlp (HLS or platform URL)
+                        if (video_type == 'hls' or
+                            url.endswith('.m3u8') or
+                            'vimeo.com' in url or
+                            'youtube.com' in url or
                             'youtu.be' in url or
                             'instagram.com' in url or
-                            'tiktok.com' in url or
-                            video_info.get('type') == 'hls' or 
-                            url.endswith('.m3u8')):
+                            'tiktok.com' in url):
                             # Platform video or HLS stream - use yt-dlp
                             download_data = {
                                 'url': url,
@@ -814,10 +837,12 @@ class MainWindow(QMainWindow):
                             }
                             self.add_download(download_data)
                         else:
-                            # Check if it's actually a direct file URL
-                            is_direct_file = (url.endswith(('.mp4', '.webm', '.mov', '.avi', '.mkv', '.m4v')) or
-                                            any(ext in url.lower() for ext in ['.mp4?', '.webm?', '.mov?']))
-                            
+                            is_direct_file = (
+                                video_type in DIRECT_TYPES or
+                                url.endswith(('.mp4', '.webm', '.mov', '.avi', '.mkv', '.m4v')) or
+                                any(ext in url.lower() for ext in ['.mp4?', '.webm?', '.mov?'])
+                            )
+
                             if is_direct_file:
                                 # Direct file - use direct download
                                 download_data = {
@@ -829,7 +854,7 @@ class MainWindow(QMainWindow):
                                 }
                                 self.add_direct_video_download(download_data)
                             else:
-                                # Unknown format - default to yt-dlp to be safe
+                                # Unknown format - use yt-dlp as last resort
                                 download_data = {
                                     'url': url,
                                     'title': video_info.get('title', 'Video'),

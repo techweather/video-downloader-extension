@@ -496,6 +496,13 @@ function triggerScrapeVideos(tab) {
 
             let blobVideoCount = 0;
 
+            // Helper: does this URL look like a downloadable video file?
+            function looksLikeVideoUrl(url) {
+              if (!url) return false;
+              const lower = url.toLowerCase();
+              return /\.(mp4|webm|mov|avi|mkv|m4v|m3u8)(\?|$)/.test(lower);
+            }
+
             videoElements.forEach((video, index) => {
               if (video.src) {
                 // Skip blob: URLs (from MediaSource/HLS players like Mux) - not directly downloadable
@@ -504,7 +511,8 @@ function triggerScrapeVideos(tab) {
                   return;
                 }
                 const url = resolveUrl(video.src);
-                if (url && !processedUrls.has(url)) {
+                // Skip URLs that don't look like video files (e.g. page URLs set as placeholders)
+                if (url && !processedUrls.has(url) && looksLikeVideoUrl(url)) {
                   processedUrls.add(url);
                   let title = findNearbyText(video);
                   if (!title) {
@@ -528,7 +536,10 @@ function triggerScrapeVideos(tab) {
                   return;
                 }
                 const url = resolveUrl(source.src);
-                if (url && !processedUrls.has(url)) {
+                const mimeType = source.type || '';
+                // Accept if MIME type declares video, or if the URL has a video extension
+                const isVideo = mimeType.startsWith('video/') || looksLikeVideoUrl(url);
+                if (url && !processedUrls.has(url) && isVideo) {
                   processedUrls.add(url);
                   let title = findNearbyText(video);
                   if (!title) {
