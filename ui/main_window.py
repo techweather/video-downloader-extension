@@ -1058,7 +1058,7 @@ class MainWindow(QMainWindow):
             widget.status_label.setAlignment(Qt.AlignLeft | Qt.AlignVCenter)
             widget.status_label.setText("Skipped: File exists")
             widget.status_label.setStyleSheet("color: #fbbf24;")
-            widget.cancel_btn.setEnabled(False)
+            widget.cancel_btn.hide()
             widget.set_reveal(filepath)
 
         # Show notification (always, even if item not found in UI)

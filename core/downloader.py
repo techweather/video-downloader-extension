@@ -789,9 +789,6 @@ class DownloadWorker(QThread):
                     
                     # Add metadata options if enabled (sidecar files)
                     if metadata_option == 'sidecar':
-                        metadata_dir = Path(save_path) / '_metadata'
-                        metadata_dir.mkdir(parents=True, exist_ok=True)
-                        
                         ydl_opts.update({
                             'writethumbnail': True,
                             'writedescription': True,
@@ -1136,13 +1133,12 @@ class DownloadWorker(QThread):
                             
                             # For Instagram carousels with sidecar metadata, move stray metadata files
                             if metadata_option == 'sidecar' and 'instagram.com' in download['url']:
-                                metadata_path = Path(save_path) / '_metadata'
-                                
-                                # Look for stray metadata files in the video folder
                                 if organize_by_platform:
                                     video_folder = Path(save_path) / 'Instagram'
+                                    metadata_path = video_folder / '_metadata'
                                 else:
                                     video_folder = Path(save_path)
+                                    metadata_path = video_folder / '_metadata'
                                 
                                 # Move any metadata files that ended up in the wrong place
                                 for pattern in ['*.info.json', '*.description', '*.webloc', '*.url']:
