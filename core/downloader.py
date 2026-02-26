@@ -608,11 +608,13 @@ class DownloadWorker(QThread):
                     
                     filepath = video_dir / filename
 
-                    # Skip if file already exists (consistent with yt-dlp behavior)
-                    if filepath.exists():
-                        skip_reason = f"File already exists: {filename}"
-                        self.download_skipped.emit(self.current_download_id, skip_reason, str(filepath))
-                        continue
+                    # Direct video URLs often use generic filenames (e.g. "xlarge_2x.mp4"),
+                    # so different videos can share the same name. Use a counter suffix
+                    # rather than skipping, to avoid dropping legitimate downloads.
+                    counter = 1
+                    while filepath.exists():
+                        filepath = video_dir / f"{safe_title}_{counter}{ext}"
+                        counter += 1
 
                     # Track this file for cleanup if cancelled
                     self.partial_files.add(str(filepath))
