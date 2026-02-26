@@ -9,12 +9,6 @@
   let lastHighlightedElement = null;
   let activeSelector = null; // Track if selector is currently open
 
-  // Debug logging — check the browser console (F12) for [dlwithit] messages
-  function dbg(...args) {
-    console.log('[dlwithit]', ...args);
-  }
-  dbg('Image picker injected on', window.location.href);
-
   // Create highlight box
   function createHighlightBox() {
     highlightBox = document.createElement('div');
@@ -62,37 +56,7 @@
     if (element.tagName === 'IMG') {
       let url = null;
       let source = '';
-      
-      // First check if src is just a base URL - if so, log ALL attributes
-      if (element.src && (element.src.endsWith('/') || !element.src.includes('.'))) {
-        
-        // Log all standard attributes
-        for (let i = 0; i < element.attributes.length; i++) {
-          const attr = element.attributes[i];
-        }
-        
-        // Log all dataset properties
-        for (const [key, value] of Object.entries(element.dataset)) {
-        }
-        
-        // Log all properties of the element object
-        const allProps = Object.keys(element);
-        allProps.forEach(prop => {
-          try {
-            const value = element[prop];
-            if (typeof value === 'string' && value.length > 0 && value.length < 500) {
-            } else if (typeof value === 'number' || typeof value === 'boolean') {
-            }
-          } catch (e) {
-            // Skip properties that can't be accessed
-          }
-        });
-        
-        // Check srcset specifically
-        if (element.srcset) {
-        }
-      }
-      
+
       // Check lazy loading attributes FIRST (before src)
       if (element.dataset.src) {
         url = element.dataset.src;
@@ -150,7 +114,6 @@
           return null;
         }
         return url;
-      } else {
       }
     }
     
@@ -193,9 +156,6 @@
   // Find all images at a point (for layered images)
   function findImagesAtPoint(x, y, clickTarget) {
     const elements = document.elementsFromPoint(x, y);
-    dbg('elementsFromPoint at', x, y, '→', elements.length, 'elements:',
-        elements.map(el => el.tagName + (el.id ? '#' + el.id : '') + (el.className ? '.' + String(el.className).split(' ')[0] : '')));
-
     const images = [];
 
     // Check if the click target is an <img> or has a direct <img> child
@@ -215,8 +175,6 @@
         });
       }
     }
-
-    dbg('findImagesAtPoint found', images.length, 'image(s):', images.map(i => i.url));
 
     // If an actual <img> was clicked, hide background entries (they're just parent containers)
     if (clickedImg) {
@@ -304,33 +262,14 @@
     }
   }
 
-  // Diagnostic: fires on pointerup regardless of whether click is suppressed.
-  // If you see pointerup but NOT click in the console, Apple is preventing
-  // the click event from being generated (via pointerdown.preventDefault()).
-  function onPointerUp(e) {
-    if (!picking) return;
-    if (activeSelector && activeSelector.contains(e.target)) return;
-    if (highlightBox && highlightBox.contains(e.target)) return;
-    dbg('pointerup fired — target:', e.target.tagName, e.target.className || '');
-  }
-
   // Handle click
   function onClick(e) {
     if (!picking) return;
 
-    dbg('click fired — phase:', e.eventPhase, 'target:', e.target.tagName,
-        e.target.className || '', 'at', e.clientX, e.clientY);
-
     // Let clicks inside our own UI elements (selector popup, highlight box)
     // pass through so their own handlers (item.onclick, close button) still fire.
-    if (activeSelector && activeSelector.contains(e.target)) {
-      dbg('click inside activeSelector — passing through');
-      return;
-    }
-    if (highlightBox && highlightBox.contains(e.target)) {
-      dbg('click inside highlightBox — passing through');
-      return;
-    }
+    if (activeSelector && activeSelector.contains(e.target)) return;
+    if (highlightBox && highlightBox.contains(e.target)) return;
 
     e.preventDefault();
     e.stopPropagation();
@@ -344,10 +283,7 @@
              !img.url.includes('transparent');
     });
 
-    dbg('validImages after filter:', validImages.length, validImages.map(i => i.url));
-
     if (validImages.length === 0) {
-      dbg('no valid images — showing toast');
       showToast('No image found at this location');
       return;
     }
@@ -357,18 +293,15 @@
       const url = validImages[0].url;
       const highResUrl = getHighResUrl(url);
 
-      dbg('sending download-image message, url:', highResUrl);
       browser.runtime.sendMessage({
         action: 'download-image',
         url: highResUrl
-      }).then(() => dbg('sendMessage resolved'))
-        .catch(err => dbg('sendMessage error:', err));
+      });
 
       showToast('Image sent to downloader', 'success');
     } else {
       // Multiple images - show selector only if not already open
       if (!activeSelector) {
-        dbg('showing image selector with', validImages.length, 'images');
         showImageSelector(validImages, e.clientX, e.clientY);
       }
     }
@@ -691,7 +624,6 @@
     
     document.removeEventListener('mousemove', onMouseMove);
     document.removeEventListener('click', onClick, true);
-    document.removeEventListener('pointerup', onPointerUp, true);
     document.removeEventListener('keydown', onKeyDown);
     
     if (highlightBox) {
@@ -709,8 +641,6 @@
   // Use capture phase so our handler runs before page scripts (e.g. Apple's
   // scroll-interaction overlays) that call stopPropagation in capture phase.
   document.addEventListener('click', onClick, true);
-  // Diagnostic: lets us detect if click events are suppressed by pointerdown.preventDefault()
-  document.addEventListener('pointerup', onPointerUp, true);
   document.addEventListener('keydown', onKeyDown);
   
   // Show initial message
