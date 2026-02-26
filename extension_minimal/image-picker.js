@@ -173,14 +173,16 @@
     
     // Check for img children
     const img = element.querySelector('img');
-    if (img) {
+    if (img && img !== element) {
       return extractImageURL(img); // Recursive call to check lazy loading
     }
-    
-    // Check parent for img
+
+    // Check parent for img — guard against returning the element itself,
+    // which causes infinite recursion (parent.querySelector('img') can return
+    // the current element when it IS the img and has no other img descendants).
     if (element.parentElement) {
       const parentImg = element.parentElement.querySelector('img');
-      if (parentImg) {
+      if (parentImg && parentImg !== element) {
         return extractImageURL(parentImg); // Recursive call to check lazy loading
       }
     }
