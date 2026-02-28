@@ -515,8 +515,7 @@ class MainWindow(QMainWindow):
         self._ytdlp_latest_version = latest
 
         if current == latest:
-            self.ytdlp_status_label.setText("\u2713 Up to date")
-            self.ytdlp_status_label.setStyleSheet("color: #27ae60; font-size: 12px; font-style: normal;")
+            self.ytdlp_status_label.setText("")
         else:
             # Show clickable "Update available" text
             self.ytdlp_status_label.setText(f"Update available ({latest})")
@@ -1199,7 +1198,7 @@ class MainWindow(QMainWindow):
         desktop = QApplication.desktop()
         
         # Set window size
-        width = geometry.get('width', 500)
+        width = geometry.get('width', 580)
         height = geometry.get('height', 600)
         
         # Ensure minimum and maximum sizes (use virtual desktop for multi-monitor)

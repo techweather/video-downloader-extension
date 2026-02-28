@@ -154,8 +154,16 @@ class DownloadItem(QWidget):
         action_layout.addWidget(self.report_error_btn)
         self.action_widget.setLayout(action_layout)
 
+        # Wrap content in a widget with Ignored size policy so it never
+        # enforces a minimum width — thumbnail and action_widget get their
+        # fixed widths first, content gets whatever remains.
+        content_widget = QWidget()
+        content_widget.setSizePolicy(QSizePolicy.Ignored, QSizePolicy.Preferred)
+        content_widget.setMinimumWidth(0)
+        content_widget.setLayout(content_layout)
+
         main_layout.addWidget(self.thumbnail_label)
-        main_layout.addLayout(content_layout, 1)
+        main_layout.addWidget(content_widget, 1)
         main_layout.addWidget(self.action_widget)
 
         self.setLayout(main_layout)
