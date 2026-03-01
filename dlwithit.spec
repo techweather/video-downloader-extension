@@ -40,16 +40,19 @@ a = Analysis(
         ('assets', 'assets'),
         ('extension_minimal', 'extension_minimal'),
         ('version.py', '.'),
-        # exiftool (Perl script + pure-Perl Image::ExifTool module).
-        # Both land in Contents/Resources/exiftool_bundle/ so we can call:
+        # exiftool (Perl script + pure-Perl modules it depends on).
+        # All land in Contents/Resources/exiftool_bundle/ so we can call:
         #   /usr/bin/perl -I<exiftool_bundle>/lib exiftool_bundle/exiftool
         # The hardcoded Homebrew paths baked into the script's BEGIN block
         # simply won't exist on other machines, so Perl falls through to the
-        # -I path we provide. Only Image/ is bundled — the arch-specific
-        # darwin-thread-multi-2level folder (Brotli compression) is skipped
-        # because Image::ExifTool is 100% pure Perl.
+        # -I path we provide.
+        # Image/ is the main ExifTool module (pure Perl, 19 MB).
+        # File/ provides File::RandomAccess, required by Image/ExifTool.pm.
+        # The arch-specific darwin-thread-multi-2level folder (Brotli compression)
+        # is skipped — Image::ExifTool and File::RandomAccess are 100% pure Perl.
         ('/opt/homebrew/Cellar/exiftool/13.44_1/bin/exiftool', 'exiftool_bundle'),
         ('/opt/homebrew/Cellar/exiftool/13.44_1/libexec/lib/perl5/Image', 'exiftool_bundle/lib/Image'),
+        ('/opt/homebrew/Cellar/exiftool/13.44_1/libexec/lib/perl5/File', 'exiftool_bundle/lib/File'),
     ],
     hiddenimports=[
         # PyQt5

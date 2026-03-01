@@ -16,6 +16,28 @@ from .encoder import VideoEncoder, file_needs_encoding, get_ffmpeg_dir
 from .metadata import embed_image_metadata, embed_video_metadata
 
 
+def _detect_image_extension(filepath):
+    """
+    Read the first 12 magic bytes to determine the actual image format.
+    Returns the correct extension (no dot, e.g. 'webp') or None if unrecognised.
+    """
+    try:
+        with open(filepath, 'rb') as f:
+            header = f.read(12)
+    except OSError:
+        return None
+
+    if header[:3] == b'\xff\xd8\xff':
+        return 'jpg'
+    if header[:4] == b'\x89PNG':
+        return 'png'
+    if header[:4] == b'RIFF' and header[8:12] == b'WEBP':
+        return 'webp'
+    if header[:4] == b'GIF8':
+        return 'gif'
+    return None
+
+
 class YtDlpLogger:
     """Custom logger to capture yt-dlp messages, including skip notifications."""
 
@@ -373,6 +395,19 @@ class DownloadWorker(QThread):
             
             # Remove from partial files once complete
             self.partial_files.discard(str(filepath))
+
+            # Rename if the server lied about the file type (e.g. WebP served as .jpg).
+            # This matters for both exiftool (wrong extension → parse error) and the user.
+            actual_ext = _detect_image_extension(str(filepath))
+            if actual_ext and actual_ext != filepath.suffix.lstrip('.').lower():
+                new_path = filepath.with_suffix(f'.{actual_ext}')
+                counter = 1
+                while new_path.exists():
+                    new_path = filepath.parent / f"{filepath.stem}_{counter}.{actual_ext}"
+                    counter += 1
+                filepath.rename(new_path)
+                filepath = new_path
+
             return str(filepath)
             
         except requests.exceptions.HTTPError as e:

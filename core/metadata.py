@@ -11,8 +11,22 @@ from pathlib import Path
 from datetime import datetime
 import logging
 
-# Set up logging
+# Set up logging — always write to a file so we can see output from the frozen app
 logger = logging.getLogger(__name__)
+
+def _setup_file_logger():
+    """Configure a file handler so metadata logs are visible in the frozen app."""
+    if logger.handlers:
+        return  # Already configured
+    log_dir = Path.home() / 'Library' / 'Logs' / 'dlwithit'
+    log_dir.mkdir(parents=True, exist_ok=True)
+    log_path = log_dir / 'metadata.log'
+    handler = logging.FileHandler(log_path, mode='a', encoding='utf-8')
+    handler.setFormatter(logging.Formatter('%(asctime)s %(levelname)s %(message)s'))
+    logger.addHandler(handler)
+    logger.setLevel(logging.DEBUG)
+
+_setup_file_logger()
 
 
 def _exiftool_cmd():
@@ -36,12 +50,20 @@ def _exiftool_cmd():
         bundle = os.path.join(contents_dir, 'Resources', 'exiftool_bundle')
         script = os.path.join(bundle, 'exiftool')
         lib    = os.path.join(bundle, 'lib')
+        logger.debug(f"[frozen] sys.executable={sys.executable}")
+        logger.debug(f"[frozen] contents_dir={contents_dir}")
+        logger.debug(f"[frozen] exiftool script={script} exists={os.path.exists(script)}")
+        logger.debug(f"[frozen] lib dir={lib} exists={os.path.exists(lib)}")
         if os.path.exists(script):
-            return ['/usr/bin/perl', f'-I{lib}', script]
+            cmd = ['/usr/bin/perl', f'-I{lib}', script]
+            logger.debug(f"[frozen] returning cmd={cmd}")
+            return cmd
         # Fall back to a Homebrew install if someone runs the frozen app in dev
         for path in ['/opt/homebrew/bin/exiftool', '/usr/local/bin/exiftool']:
             if os.path.exists(path):
+                logger.debug(f"[frozen] falling back to system exiftool at {path}")
                 return [path]
+        logger.warning("[frozen] exiftool not found in bundle or Homebrew — metadata will be skipped")
         return None  # Not available — metadata embedding will be skipped
 
     # --- Development: rely on PATH ---
@@ -52,34 +74,40 @@ def is_exiftool_available():
     """Check if exiftool is available."""
     cmd = _exiftool_cmd()
     if cmd is None:
+        logger.warning("is_exiftool_available: _exiftool_cmd() returned None")
         return False
     try:
         result = subprocess.run(cmd + ['-ver'],
                                 capture_output=True, text=True, timeout=5)
-        return result.returncode == 0
-    except (subprocess.TimeoutExpired, FileNotFoundError, OSError):
+        available = result.returncode == 0
+        logger.debug(f"is_exiftool_available: cmd={cmd} returncode={result.returncode} "
+                     f"stdout={result.stdout.strip()!r} stderr={result.stderr.strip()!r} -> {available}")
+        return available
+    except (subprocess.TimeoutExpired, FileNotFoundError, OSError) as e:
+        logger.warning(f"is_exiftool_available: exception running {cmd}: {type(e).__name__}: {e}")
         return False
 
 
 def embed_image_metadata(filepath, source_url, page_title=None, download_date=None):
     """
     Embed metadata into image files (JPG, PNG, WEBP, etc.) using exiftool
-    
+
     Args:
         filepath (str): Path to the image file
         source_url (str): Source URL where the image was downloaded from
         page_title (str, optional): Title of the page/post
         download_date (str, optional): ISO format date string, defaults to now
-        
+
     Returns:
         bool: True if metadata was successfully embedded, False otherwise
     """
+    logger.debug(f"embed_image_metadata called: filepath={filepath!r} url={source_url!r}")
     if not is_exiftool_available():
-        logger.warning("exiftool not available, skipping image metadata embedding")
+        logger.warning("embed_image_metadata: exiftool not available, skipping")
         return False
-    
+
     if not os.path.exists(filepath):
-        logger.error(f"Image file does not exist: {filepath}")
+        logger.error(f"embed_image_metadata: file does not exist: {filepath}")
         return False
     
     # Default to current date/time if not provided
@@ -112,20 +140,23 @@ def embed_image_metadata(filepath, source_url, page_title=None, download_date=No
         cmd.append(filepath)
         
         # Execute exiftool command
+        logger.debug(f"embed_image_metadata: running cmd={cmd}")
         result = subprocess.run(cmd, capture_output=True, text=True, timeout=30)
-        
+        logger.debug(f"embed_image_metadata: returncode={result.returncode} "
+                     f"stdout={result.stdout.strip()!r} stderr={result.stderr.strip()!r}")
+
         if result.returncode == 0:
             logger.info(f"Successfully embedded metadata into image: {Path(filepath).name}")
             return True
         else:
             logger.warning(f"exiftool failed for image {Path(filepath).name}: {result.stderr}")
             return False
-            
+
     except subprocess.TimeoutExpired:
         logger.error(f"exiftool timeout while processing image: {filepath}")
         return False
     except Exception as e:
-        logger.error(f"Error embedding metadata into image {filepath}: {e}")
+        logger.error(f"Error embedding metadata into image {filepath}: {e}", exc_info=True)
         return False
 
 
@@ -143,12 +174,13 @@ def embed_video_metadata(filepath, source_url, title=None, description=None, upl
     Returns:
         bool: True if metadata was successfully embedded, False otherwise
     """
+    logger.debug(f"embed_video_metadata called: filepath={filepath!r} url={source_url!r} title={title!r}")
     if not is_exiftool_available():
-        logger.warning("exiftool not available, skipping video metadata embedding")
+        logger.warning("embed_video_metadata: exiftool not available, skipping")
         return False
-    
+
     if not os.path.exists(filepath):
-        logger.error(f"Video file does not exist: {filepath}")
+        logger.error(f"embed_video_metadata: file does not exist: {filepath}")
         return False
     
     try:
@@ -214,20 +246,23 @@ def embed_video_metadata(filepath, source_url, title=None, description=None, upl
         cmd.append(filepath)
         
         # Execute exiftool command
+        logger.debug(f"embed_video_metadata: running cmd={cmd}")
         result = subprocess.run(cmd, capture_output=True, text=True, timeout=60)
-        
+        logger.debug(f"embed_video_metadata: returncode={result.returncode} "
+                     f"stdout={result.stdout.strip()!r} stderr={result.stderr.strip()!r}")
+
         if result.returncode == 0:
             logger.info(f"Successfully embedded metadata into video: {Path(filepath).name}")
             return True
         else:
             logger.warning(f"exiftool failed for video {Path(filepath).name}: {result.stderr}")
             return False
-            
+
     except subprocess.TimeoutExpired:
         logger.error(f"exiftool timeout while processing video: {filepath}")
         return False
     except Exception as e:
-        logger.error(f"Error embedding metadata into video {filepath}: {e}")
+        logger.error(f"Error embedding metadata into video {filepath}: {e}", exc_info=True)
         return False
 
 

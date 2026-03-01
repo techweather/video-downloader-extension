@@ -393,8 +393,10 @@ class EncodingWorker(QThread):
                 uploader=uploader
             )
 
-        except Exception:
-            pass
+        except Exception as e:
+            import logging
+            logging.getLogger(__name__).error(
+                f"_embed_metadata_if_requested: unexpected error for {filepath}: {e}", exc_info=True)
 
     def stop(self):
         """Stop the encoding worker"""
