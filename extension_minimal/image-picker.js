@@ -231,6 +231,15 @@
     return url;
   }
 
+  // Close the active selection box and clean up any hover previews
+  function closeSelector() {
+    if (!activeSelector) return;
+    const hoverPreviews = document.querySelectorAll('img[style*="position: fixed"][style*="width: 200px"]');
+    hoverPreviews.forEach(preview => preview.remove());
+    activeSelector.remove();
+    activeSelector = null;
+  }
+
   // Handle mouse move
   function onMouseMove(e) {
     if (!picking) return;
@@ -273,6 +282,14 @@
 
     e.preventDefault();
     e.stopPropagation();
+
+    // Click was outside the open selector — close it and stop.
+    // (handleOutsideClick can't be used here because onClick runs in capture
+    // phase and stopPropagation above would prevent it from ever firing.)
+    if (activeSelector) {
+      closeSelector();
+      return;
+    }
 
     const images = findImagesAtPoint(e.clientX, e.clientY, e.target);
 
@@ -374,14 +391,7 @@
     closeBtn.style.padding = '0';
     closeBtn.style.width = '24px';
     closeBtn.style.height = '24px';
-    closeBtn.onclick = () => {
-      // Remove any hover preview elements before closing selector
-      const hoverPreviews = document.querySelectorAll('img[style*="position: fixed"][style*="width: 200px"]');
-      hoverPreviews.forEach(preview => preview.remove());
-      
-      selector.remove();
-      activeSelector = null;
-    };
+    closeBtn.onclick = () => closeSelector();
     
     header.appendChild(title);
     header.appendChild(closeBtn);
@@ -558,50 +568,20 @@
     instructions.style.padding = '8px';
     instructions.style.backgroundColor = '#f8f9fa';
     instructions.style.borderRadius = '4px';
-    instructions.textContent = 'Click images to download multiple. Press ESC or click × to close.';
+    instructions.textContent = 'Click images to download multiple. Click outside, press ESC, or click × to close.';
     selector.appendChild(instructions);
     
     document.body.appendChild(selector);
     
-    // Handle clicks outside selector (but don't close it immediately)
-    const handleOutsideClick = (event) => {
-      if (!selector.contains(event.target)) {
-        // Only close if it's been open for at least 500ms to prevent accidental closure
-        setTimeout(() => {
-          if (activeSelector === selector) {
-            // Remove any hover preview elements before closing selector
-            const hoverPreviews = document.querySelectorAll('img[style*="position: fixed"][style*="width: 200px"]');
-            hoverPreviews.forEach(preview => preview.remove());
-            
-            selector.remove();
-            activeSelector = null;
-            document.removeEventListener('click', handleOutsideClick);
-          }
-        }, 200);
-      }
-    };
-    
-    // Add outside click handler after a brief delay
-    setTimeout(() => {
-      document.addEventListener('click', handleOutsideClick);
-    }, 100);
   }
 
   // Handle escape key
   function onKeyDown(e) {
     if (e.key === 'Escape') {
-      // Always remove any hover preview elements first
-      const hoverPreviews = document.querySelectorAll('img[style*="position: fixed"][style*="width: 200px"]');
-      hoverPreviews.forEach(preview => preview.remove());
-      
-      // Close any open selector first
       if (activeSelector) {
-        activeSelector.remove();
-        activeSelector = null;
+        closeSelector();
         return; // Don't exit picker mode, just close selector
       }
-      
-      // Exit picker mode
       cleanup();
       showToast('Image picker deactivated');
     }
@@ -611,16 +591,7 @@
   function cleanup() {
     picking = false;
     window.__imagePickerActive = false;
-    
-    // Remove any active hover preview elements
-    const hoverPreviews = document.querySelectorAll('img[style*="position: fixed"][style*="width: 200px"]');
-    hoverPreviews.forEach(preview => preview.remove());
-    
-    // Close any active selector
-    if (activeSelector) {
-      activeSelector.remove();
-      activeSelector = null;
-    }
+    closeSelector();
     
     document.removeEventListener('mousemove', onMouseMove);
     document.removeEventListener('click', onClick, true);

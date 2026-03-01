@@ -74,3 +74,12 @@ Some sites may not be supported. Try using "Extract Direct Videos" as an alterna
 
 **YouTube downloads failing?**
 Try updating yt-dlp — if an update is available, you'll see an "Update available" link in the app settings.
+
+**Downloaded video won't play or shows as corrupted**
+Some websites lazy-load videos, meaning the video only fully loads when you scroll to it and let it play. If a downloaded video won't play:
+1. Go back to the page
+2. Scroll to the video and let it play for a few seconds
+3. Run "Extract Direct Videos" again
+4. The new download should work correctly
+
+This is especially common on sites like Apple.com that use advanced video loading techniques.
