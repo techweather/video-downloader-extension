@@ -130,7 +130,15 @@ def embed_image_metadata(filepath, source_url, page_title=None, download_date=No
             f'-IPTC:Source={source_url}',  # Backup location
             f'-XMP:DateTimeOriginal={download_date}',
         ])
-        
+
+        # Add page URL to visible description fields so it appears in Bridge's
+        # sidebar Metadata panel and Preview's IPTC tab without extra clicks.
+        if page_url:
+            cmd.extend([
+                f'-XMP:Description=Source: {page_url}',
+                f'-IPTC:Caption-Abstract=Source: {page_url}',
+            ])
+
         # Add page title if provided and it's not a URL
         if page_title and not page_title.startswith('http'):
             cmd.extend([
