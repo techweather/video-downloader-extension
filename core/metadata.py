@@ -88,20 +88,21 @@ def is_exiftool_available():
         return False
 
 
-def embed_image_metadata(filepath, source_url, page_title=None, download_date=None):
+def embed_image_metadata(filepath, source_url, page_title=None, download_date=None, page_url=None):
     """
     Embed metadata into image files (JPG, PNG, WEBP, etc.) using exiftool
 
     Args:
         filepath (str): Path to the image file
-        source_url (str): Source URL where the image was downloaded from
+        source_url (str): Direct CDN URL of the image file
         page_title (str, optional): Title of the page/post
         download_date (str, optional): ISO format date string, defaults to now
+        page_url (str, optional): URL of the web page where the image was found
 
     Returns:
         bool: True if metadata was successfully embedded, False otherwise
     """
-    logger.debug(f"embed_image_metadata called: filepath={filepath!r} url={source_url!r}")
+    logger.debug(f"embed_image_metadata called: filepath={filepath!r} url={source_url!r} page_url={page_url!r}")
     if not is_exiftool_available():
         logger.warning("embed_image_metadata: exiftool not available, skipping")
         return False
@@ -109,11 +110,11 @@ def embed_image_metadata(filepath, source_url, page_title=None, download_date=No
     if not os.path.exists(filepath):
         logger.error(f"embed_image_metadata: file does not exist: {filepath}")
         return False
-    
+
     # Default to current date/time if not provided
     if download_date is None:
         download_date = datetime.now().isoformat()
-    
+
     try:
         # Build exiftool command with metadata tags
         cmd = _exiftool_cmd() + [
@@ -121,10 +122,11 @@ def embed_image_metadata(filepath, source_url, page_title=None, download_date=No
             '-quiet',  # Suppress normal output
         ]
 
-        # Add source URL to multiple fields for compatibility
+        # XMP:Source = direct CDN image URL; XMP:WebStatement = the page where it was found
+        web_statement = page_url or source_url
         cmd.extend([
             f'-XMP:Source={source_url}',
-            f'-XMP:WebStatement={source_url}',  
+            f'-XMP:WebStatement={web_statement}',
             f'-IPTC:Source={source_url}',  # Backup location
             f'-XMP:DateTimeOriginal={download_date}',
         ])

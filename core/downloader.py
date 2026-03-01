@@ -614,7 +614,8 @@ class DownloadWorker(QThread):
                         embed_success = embed_image_metadata(
                             filepath=filepath,
                             source_url=download['url'],
-                            page_title=page_title
+                            page_title=page_title,
+                            page_url=referrer
                         )
                     if self.current_download_id not in self.cancelled_downloads:
                         self.download_complete.emit(download['id'], filepath)
