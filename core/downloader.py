@@ -648,6 +648,7 @@ class DownloadWorker(QThread):
                     safe_title = re.sub(r'[<>:"/\\|?*]', '-', title).strip().rstrip('.')
                     if not safe_title:
                         safe_title = 'video'
+                    safe_title = safe_title[:100]
                     filename = f"{safe_title}{ext}"
                     
                     filepath = video_dir / filename

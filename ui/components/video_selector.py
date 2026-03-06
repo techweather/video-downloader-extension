@@ -216,9 +216,9 @@ class VideoSelectorDialog(QDialog):
         info_layout.setContentsMargins(0, 0, 0, 0)
 
         title = video.get('title', f'Video {index + 1}')
-        title_label = QLabel(f"<b>{title}</b>")
+        display_title = title if len(title) <= 60 else title[:57] + '…'
+        title_label = QLabel(f"<b>{display_title}</b>")
         title_label.setStyleSheet("color: #e0e0e0; font-size: 13px;")
-        title_label.setWordWrap(True)
         info_layout.addWidget(title_label)
 
         details = self._format_video_details(video)
@@ -273,6 +273,7 @@ class VideoSelectorDialog(QDialog):
                 clean_title = re.sub(r'[-\s]+', '_', clean_title)
                 if clean_title.startswith('Video_') and video.get('originalFilename'):
                     clean_title = video['originalFilename'].replace('.mp4', '').replace('.m4v', '')
+                clean_title = clean_title[:100]
                 selected.append({
                     'url': video['url'],
                     'title': clean_title,
