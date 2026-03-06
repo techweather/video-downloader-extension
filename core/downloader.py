@@ -9,6 +9,14 @@ from pathlib import Path
 from datetime import datetime
 from urllib.parse import urlparse, unquote
 
+# Must be set before yt_dlp.YoutubeDL() is first instantiated.
+# In a PyInstaller bundle on macOS, platform.mac_ver()[0] returns '' which
+# causes yt_dlp.plugins.load_plugins() → get_executable_path() →
+# _get_variant_and_executable_path() → version_tuple('') → ValueError.
+# YTDLP_NO_PLUGINS is checked at the top of load_plugins() and short-circuits
+# the entire code path before get_executable_path() is ever called.
+os.environ.setdefault('YTDLP_NO_PLUGINS', '1')
+
 from PyQt5.QtCore import QThread, pyqtSignal
 import yt_dlp
 

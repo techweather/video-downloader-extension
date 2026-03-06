@@ -174,3 +174,15 @@ app = BUNDLE(
         'NSHumanReadableCopyright': '© 2025 dlwithit',
     },
 )
+
+# ── Post-build: lower minos from 15.0 → 14.0 ────────────────────────────────
+# Homebrew Python 3.13 and ffmpeg dylibs are compiled with minos=15.0.
+# The fix_deployment_target.sh script patches every .so/.dylib in the bundle
+# using vtool and re-signs with an ad-hoc signature, allowing the app to run
+# on macOS 14 (Sonoma) without actually using any macOS-15-only APIs.
+import subprocess, pathlib
+_fix_script = pathlib.Path(SPECPATH) / 'scripts' / 'fix_deployment_target.sh'
+_app_path = str(pathlib.Path(DISTPATH) / 'dlwithit.app')
+if _fix_script.exists():
+    print(f'\n[post-build] Patching deployment target → 14.0 …')
+    subprocess.run(['bash', str(_fix_script), _app_path, '14.0'], check=True)

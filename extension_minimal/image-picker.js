@@ -521,11 +521,21 @@
       // Create a shortened URL for display
       const shortUrl = img.url.length > 40 ? img.url.substring(0, 40) + '...' : img.url;
       
-      info.innerHTML = `
-        <div style="color: #333; font-weight: 500;">Type: ${img.type}</div>
-        <div style="color: #666; font-size: 11px; margin-top: 2px;">${shortUrl}</div>
-        <div style="color: #3498db; font-size: 11px; margin-top: 2px;">Click to download</div>
-      `;
+      const typeDiv = document.createElement('div');
+      typeDiv.style.cssText = 'color: #333; font-weight: 500;';
+      typeDiv.textContent = `Type: ${img.type}`;
+
+      const urlDiv = document.createElement('div');
+      urlDiv.style.cssText = 'color: #666; font-size: 11px; margin-top: 2px;';
+      urlDiv.textContent = shortUrl;
+
+      const ctaDiv = document.createElement('div');
+      ctaDiv.style.cssText = 'color: #3498db; font-size: 11px; margin-top: 2px;';
+      ctaDiv.textContent = 'Click to download';
+
+      info.appendChild(typeDiv);
+      info.appendChild(urlDiv);
+      info.appendChild(ctaDiv);
       
       item.appendChild(preview);
       item.appendChild(info);
