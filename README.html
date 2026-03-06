@@ -1,0 +1,353 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>dlwithit — User Guide</title>
+<style>
+  :root {
+    --bg:        #f5f5f7;
+    --surface:   #ffffff;
+    --border:    #d2d2d7;
+    --text:      #1d1d1f;
+    --muted:     #6e6e73;
+    --accent:    #0071e3;
+    --code-bg:   #f0f0f5;
+    --code-text: #1d1d1f;
+    --tag-bg:    #e8f0fe;
+    --tag-text:  #1a56c4;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg:        #1c1c1e;
+      --surface:   #2c2c2e;
+      --border:    #3a3a3c;
+      --text:      #f5f5f7;
+      --muted:     #8e8e93;
+      --accent:    #2997ff;
+      --code-bg:   #3a3a3c;
+      --code-text: #f5f5f7;
+      --tag-bg:    #1c3353;
+      --tag-text:  #5ac8fa;
+    }
+  }
+
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    font-size: 15px;
+    line-height: 1.6;
+    background: var(--bg);
+    color: var(--text);
+    padding: 40px 20px 80px;
+  }
+
+  .container { max-width: 680px; margin: 0 auto; }
+
+  header {
+    margin-bottom: 40px;
+    padding-bottom: 24px;
+    border-bottom: 1px solid var(--border);
+  }
+  header h1 { font-size: 32px; font-weight: 700; letter-spacing: -0.5px; }
+  header p { margin-top: 8px; color: var(--muted); font-size: 15px; }
+  header p.tagline { margin-top: 6px; font-size: 16px; color: var(--text); }
+
+  section {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 24px 28px;
+    margin-bottom: 20px;
+  }
+
+  h2 { font-size: 18px; font-weight: 600; margin-bottom: 14px; }
+  h3 {
+    font-size: 13px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    color: var(--muted);
+    margin: 18px 0 8px;
+  }
+  h3:first-child { margin-top: 0; }
+
+  p { margin-bottom: 10px; }
+  p:last-child { margin-bottom: 0; }
+
+  ul, ol { padding-left: 20px; margin-bottom: 10px; }
+  li { margin-bottom: 4px; }
+
+  code {
+    font-family: "SF Mono", "Fira Code", monospace;
+    font-size: 13px;
+    background: var(--code-bg);
+    color: var(--code-text);
+    padding: 1px 5px;
+    border-radius: 4px;
+  }
+
+  .tag {
+    display: inline-block;
+    font-size: 11px;
+    font-weight: 700;
+    background: var(--tag-bg);
+    color: var(--tag-text);
+    padding: 1px 7px;
+    border-radius: 20px;
+    margin-right: 6px;
+    vertical-align: middle;
+    letter-spacing: 0.3px;
+  }
+
+  /* Features list */
+  .features { display: flex; flex-direction: column; gap: 14px; margin-top: 4px; }
+  .feature strong { display: block; margin-bottom: 2px; }
+  .feature p { font-size: 14px; color: var(--muted); margin: 0; }
+
+  /* Metadata option cards */
+  .meta-options { display: flex; flex-direction: column; gap: 12px; margin-top: 12px; }
+  .meta-option { border: 1px solid var(--border); border-radius: 8px; padding: 14px 16px; }
+  .meta-option p { font-size: 14px; color: var(--muted); margin: 4px 0 0; }
+
+  /* Keyboard shortcuts table */
+  table { width: 100%; border-collapse: collapse; margin-top: 4px; }
+  th, td { text-align: left; padding: 8px 12px; border-bottom: 1px solid var(--border); font-size: 14px; }
+  th { font-size: 12px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.4px; color: var(--muted); }
+  tr:last-child td { border-bottom: none; }
+  td:first-child { color: var(--accent); font-family: "SF Mono", monospace; font-size: 13px; }
+
+  /* Settings list */
+  .settings { list-style: none; padding: 0; margin: 0; }
+  .settings li {
+    display: flex;
+    gap: 12px;
+    padding: 8px 0;
+    border-bottom: 1px solid var(--border);
+    font-size: 14px;
+    align-items: baseline;
+  }
+  .settings li:last-child { border-bottom: none; padding-bottom: 0; }
+  .settings li strong { min-width: 160px; flex-shrink: 0; }
+  .settings li span { color: var(--muted); }
+
+  /* Callout */
+  .callout {
+    background: var(--code-bg);
+    border-left: 3px solid var(--accent);
+    border-radius: 0 6px 6px 0;
+    padding: 10px 14px;
+    margin: 12px 0 4px;
+    font-size: 14px;
+    color: var(--muted);
+  }
+
+  /* Troubleshooting */
+  .trouble { margin-bottom: 16px; }
+  .trouble:last-child { margin-bottom: 0; }
+  .trouble p { font-size: 14px; color: var(--muted); margin: 3px 0 0; }
+
+  .muted { font-size: 14px; color: var(--muted); margin-top: 10px; }
+</style>
+</head>
+<body>
+<div class="container">
+
+  <header>
+    <h1>dlwithit</h1>
+    <p class="tagline">Built for designers, filmmakers, and creatives who need to quickly gather visual references.</p>
+    <p>Download images and videos from the web — macOS menu bar app + Firefox extension</p>
+  </header>
+
+  <!-- What it does -->
+  <section>
+    <h2>What it does</h2>
+    <p>dlwithit is a two-part tool: a Firefox extension that detects media on any webpage, and a native macOS app that handles the actual downloading. Right-click on any page to pick images, grab videos from platforms like YouTube and Vimeo, or extract embedded video files that browsers can't normally save.</p>
+    <p>The app queues downloads with progress tracking, auto-encodes VP9 to H.264, and can embed source URLs as metadata so you always know where something came from.</p>
+  </section>
+
+  <!-- Requirements -->
+  <section>
+    <h2>Requirements</h2>
+    <ul>
+      <li>macOS 14.4 (Sonoma) or later — Apple Silicon or Intel</li>
+      <li>Firefox browser</li>
+    </ul>
+    <p class="muted">Everything else — ffmpeg, yt-dlp, exiftool — is bundled. Nothing else to install.</p>
+  </section>
+
+  <!-- Installing the App -->
+  <section>
+    <h2>Installing the App</h2>
+    <ol>
+      <li>Drag <strong>dlwithit.app</strong> to your Applications folder.</li>
+      <li><strong>First launch:</strong> Right-click the app → <strong>Open</strong>. macOS will warn that the app is not notarized — click <strong>Open</strong> in the dialog to proceed. You only need to do this once.</li>
+      <li>Grant permission to access your Downloads folder when prompted.</li>
+      <li>The dlwithit icon will appear in your menu bar.</li>
+    </ol>
+  </section>
+
+  <!-- Installing the Extension -->
+  <section>
+    <h2>Installing the Firefox Extension</h2>
+
+    <div class="callout" style="margin-bottom:16px;">Requires <strong>Firefox 140 or later</strong>. To check your version: Help → About Firefox.</div>
+
+    <ol>
+      <li>Open the <strong>Firefox Extension</strong> folder.</li>
+      <li>Drag <code>dlwithit-extension-1.0.0.xpi</code> onto a Firefox window.</li>
+      <li>Click <strong>Add</strong> when prompted.</li>
+      <li>The extension is now installed. Access dlwithit by right-clicking on any webpage.</li>
+    </ol>
+  </section>
+
+  <!-- Features -->
+  <section>
+    <h2>Features</h2>
+    <div class="features">
+      <div class="feature">
+        <strong>Pick Images</strong>
+        <p>Visual overlay to select and download images from any page.</p>
+      </div>
+      <div class="feature">
+        <strong>Download Media</strong>
+        <p>Download from YouTube, Vimeo, Instagram, TikTok, and hundreds more via yt-dlp.</p>
+      </div>
+      <div class="feature">
+        <strong>Extract Direct Videos</strong>
+        <p>Finds embedded video files in pages (Mux, Squarespace, HLS streams, etc.).</p>
+      </div>
+      <div class="feature">
+        <strong>Metadata embedding</strong>
+        <p>Saves the source URL inside downloaded files so you always know where something came from.</p>
+      </div>
+      <div class="feature">
+        <strong>VP9 to H.264 encoding</strong>
+        <p>Auto-converts WebM/VP9 downloads to H.264 MP4.</p>
+      </div>
+      <div class="feature">
+        <strong>Playlist support</strong>
+        <p>Detects playlists and lets you pick which videos to download.</p>
+      </div>
+      <div class="feature">
+        <strong>Organize by platform</strong>
+        <p>Auto-sorts downloads into folders by source site.</p>
+      </div>
+      <div class="feature">
+        <strong>Auto-updates yt-dlp</strong>
+        <p>Checks for updates and installs with one click.</p>
+      </div>
+    </div>
+  </section>
+
+  <!-- First Use -->
+  <section>
+    <h2>First Use</h2>
+    <p>Once the app is running and the extension is installed, right-click any webpage in Firefox to see the dlwithit menu. Downloads appear in the app's queue with progress bars, thumbnails, and status updates. Completed downloads have a "Show in Finder" button.</p>
+    <p class="muted">Downloads are saved to <code>~/Downloads/dlwithit/</code>, organized by site.</p>
+  </section>
+
+  <!-- Settings -->
+  <section>
+    <h2>Settings</h2>
+    <ul class="settings">
+      <li><strong>Save location</strong> <span>Default <code>~/Downloads/dlwithit/</code>, or set a custom folder</span></li>
+      <li><strong>Organize by platform</strong> <span>Auto-create subfolders for YouTube, Instagram, etc.</span></li>
+      <li><strong>Metadata</strong> <span>None, embedded in file, or sidecar — see below</span></li>
+      <li><strong>Auto-encode VP9</strong> <span>Convert WebM/VP9 to H.264 MP4 after download</span></li>
+      <li><strong>Keep original</strong> <span>Retain the original file after encoding</span></li>
+      <li><strong>System tray</strong> <span>Show/hide tray icon, minimize to tray on close</span></li>
+    </ul>
+  </section>
+
+  <!-- Metadata -->
+  <section>
+    <h2>Metadata</h2>
+    <p>When downloading images, dlwithit can save information about where the image came from. Choose an option in the app's settings:</p>
+    <div class="meta-options">
+      <div class="meta-option">
+        <strong>None</strong>
+        <p>No metadata is written. The file is saved exactly as downloaded.</p>
+      </div>
+      <div class="meta-option">
+        <strong>Embedded</strong>
+        <p>Source URL, page title, and date are written directly into the image file using standard EXIF/IPTC fields. The file looks and works normally — the metadata is just hidden inside it.</p>
+        <p style="margin-top:6px;">To view it: open the image in <strong>Preview → Tools → Show Inspector</strong>, or use <strong>Adobe Bridge</strong> where it appears in the sidebar under the Description field.</p>
+      </div>
+      <div class="meta-option">
+        <strong>Sidecar</strong>
+        <p>Metadata is saved to a separate <code>.xmp</code> file alongside the image (e.g. <code>photo.jpg</code> + <code>photo.xmp</code>). The sidecar may also include a thumbnail and other details depending on the content. Useful if you don't want to modify the original file.</p>
+      </div>
+    </div>
+  </section>
+
+  <!-- Keyboard Shortcuts -->
+  <section>
+    <h2>Keyboard Shortcuts</h2>
+    <table>
+      <thead><tr><th>Shortcut</th><th>Action</th></tr></thead>
+      <tbody>
+        <tr><td>⌘ F1</td><td>Pick Images</td></tr>
+        <tr><td>⌘ F2</td><td>Download Media</td></tr>
+        <tr><td>⌘ F3</td><td>Extract Direct Videos</td></tr>
+      </tbody>
+    </table>
+    <p class="muted" style="margin-top:12px;">Shortcuts can be customized in Firefox under <code>about:addons</code> → gear icon → Manage Extension Shortcuts.</p>
+  </section>
+
+  <!-- Troubleshooting -->
+  <section>
+    <h2>Troubleshooting</h2>
+
+    <div class="trouble">
+      <strong>"Add-on appears to be corrupt" when installing extension</strong>
+      <p>This usually means your Firefox version is too old. dlwithit requires Firefox 140 or later. Update Firefox via Help → About Firefox, or download the latest version from mozilla.org.</p>
+    </div>
+
+    <div class="trouble">
+      <strong>"App can't be opened because it is from an unidentified developer"</strong>
+      <p>Right-click the app → <strong>Open</strong>, then click <strong>Open</strong> in the dialog. You only need to do this once.</p>
+    </div>
+
+    <div class="trouble">
+      <strong>Right-click → Open doesn't work (Gatekeeper)</strong>
+      <p>On some Macs, you may need to go to System Settings → Privacy &amp; Security, scroll down to find the message about dlwithit, and click "Open Anyway".</p>
+    </div>
+
+    <div class="trouble">
+      <strong>Extension doesn't respond / nothing happens</strong>
+      <p>The dlwithit app must be running for the extension to work. Check your menu bar — if the icon isn't there, launch the app from your Applications folder first.</p>
+    </div>
+
+    <div class="trouble">
+      <strong>YouTube downloads failing?</strong>
+      <p>yt-dlp may need an update. If one is available, you'll see an "Update available" link in the app settings. YouTube frequently changes its API and yt-dlp updates are the fix.</p>
+    </div>
+
+    <div class="trouble">
+      <strong>403 Forbidden errors on images</strong>
+      <p>Some CDNs reject requests with unexpected headers. dlwithit uses a minimal-headers strategy that works with most CDNs, but some sites may still block downloads.</p>
+    </div>
+
+    <div class="trouble">
+      <strong>Videos not detected on a page</strong>
+      <p>Try <strong>Extract Direct Videos</strong> — it runs a deep scan of the page source looking for video URLs in scripts, data attributes, and metadata. Some sites load video URLs dynamically after interaction, which may not be detectable until you interact with the player first.</p>
+    </div>
+
+    <div class="trouble">
+      <strong>Downloaded video won't play or is corrupted</strong>
+      <p>Some sites lazy-load videos — the file only fully loads after you scroll to it and let it play. Go back to the page, play the video for a few seconds, then run <strong>Extract Direct Videos</strong> again. This is especially common on sites like Apple.com.</p>
+    </div>
+  </section>
+
+  <!-- Report Issue -->
+  <section>
+    <h2>Report Issue</h2>
+    <p>If a download fails, the <strong>Report Issue</strong> button sends information about the URL and error to help improve dlwithit's compatibility with more sites. This helps identify which websites need better support.</p>
+    <p class="muted">No personal information is collected — only the URL and technical error details are sent.</p>
+  </section>
+
+</div>
+</body>
+</html>
