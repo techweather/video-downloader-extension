@@ -780,7 +780,7 @@ function _runVideoScanOnTab(tabId) {
           if (videos.length === 0) {
             let msg = 'No downloadable videos found on this page.';
             if (blobVideoCount > 0) {
-              msg += '\\n\\nDetected ' + blobVideoCount + ' video player(s) using blob: URLs (streaming). Try the "Video Download" option instead, which uses yt-dlp for streaming video extraction.';
+              msg += '\\n\\nDetected ' + blobVideoCount + ' video player(s) using blob: URLs (streaming). This page appears to be a feed or playlist. Try navigating to a specific video page first, then use Video Download.';
             } else {
               msg += '\\nThe page may use a different video delivery method or videos may not be loaded yet.';
             }
