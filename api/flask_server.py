@@ -94,7 +94,23 @@ class FlaskServer:
                     return jsonify({"status": "error", "message": "Application not ready"}), 503
             
             return jsonify({"status": "queued"})
-        
+
+        @self.app.route('/classify', methods=['POST'])
+        def classify_url():
+            data = request.json
+            url = data.get('url', '') if data else ''
+            try:
+                import yt_dlp
+                with yt_dlp.YoutubeDL({'quiet': True}) as ydl:
+                    supported = any(
+                        ie.suitable(url)
+                        for ie in ydl._ies.values()
+                        if ie.ie_key() != 'Generic'
+                    )
+                return jsonify({'supported': supported})
+            except Exception:
+                return jsonify({'supported': False})
+
         @self.app.route('/health', methods=['GET'])
         def health():
             """
