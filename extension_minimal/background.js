@@ -1,13 +1,21 @@
 // Create context menu items
 browser.contextMenus.create({
   id: "pick-images",
-  title: "🖼️  Pick Images (ESC to stop)",
+  title: "Image Picker (ESC to stop)",
+  icons: {
+    16: "icons/image-picker-16.png",
+    32: "icons/image-picker-32.png"
+  },
   contexts: ["all"]
 });
 
 browser.contextMenus.create({
   id: "download-video",
-  title: "Video Download",
+  title: "Video Download (this page)",
+  icons: {
+    16: "icons/video-download-16.png",
+    32: "icons/video-download-32.png"
+  },
   contexts: ["all"]
 });
 
@@ -958,6 +966,8 @@ function triggerCombinedVideoDownload(tab) {
   });
 }
 
+let extractVideosTipShown = false;
+
 // Handle keyboard shortcuts
 browser.commands.onCommand.addListener((command) => {
 
@@ -974,12 +984,15 @@ browser.commands.onCommand.addListener((command) => {
       browser.tabs.executeScript(tab.id, { file: "image-picker.js" });
     }
     else if (command === "download-video") {
-      // Same as context menu download-video
-      triggerVideoDownload(tab, null);
+      triggerCombinedVideoDownload(tab);
     }
-    else if (command === "scrape-videos") {
-      // Same as context menu scrape-videos - extract direct videos
-      triggerScrapeVideos(tab);
+    else if (command === "extract-videos") {
+      if (!extractVideosTipShown) {
+        extractVideosTipShown = true;
+        triggerScrapeVideos(tab);
+      } else {
+        _runVideoScanOnTab(tab.id);
+      }
     }
   });
 });

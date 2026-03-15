@@ -44,7 +44,7 @@
       },
       "description": "Download media"
     },
-    "scrape-videos": {
+    "extract-videos": {
       "suggested_key": {
         "default": "Ctrl+F3",
         "mac": "Command+F3"
