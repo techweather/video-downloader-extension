@@ -35,21 +35,14 @@
         "default": "Ctrl+F1",
         "mac": "Command+F1"
       },
-      "description": "Pick images"
+      "description": "Image Picker"
     },
     "download-video": {
       "suggested_key": {
         "default": "Ctrl+F2",
         "mac": "Command+F2"
       },
-      "description": "Download media"
-    },
-    "extract-videos": {
-      "suggested_key": {
-        "default": "Ctrl+F3",
-        "mac": "Command+F3"
-      },
-      "description": "Extract direct videos"
+      "description": "Video Download"
     }
   }
 }
