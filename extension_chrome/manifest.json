@@ -24,12 +24,21 @@
   },
   "commands": {
     "pick-images": {
+      "suggested_key": {
+        "mac": "MacCtrl+F1"
+      },
       "description": "Pick images"
     },
     "download-video": {
+      "suggested_key": {
+        "mac": "MacCtrl+F2"
+      },
       "description": "Download media"
     },
     "scrape-videos": {
+      "suggested_key": {
+        "mac": "MacCtrl+F3"
+      },
       "description": "Extract direct videos"
     }
   }
