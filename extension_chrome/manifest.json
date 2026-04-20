@@ -25,19 +25,19 @@
   "commands": {
     "pick-images": {
       "suggested_key": {
-        "mac": "Command+Alt+1"
+        "mac": "Command+Shift+1"
       },
       "description": "Pick images"
     },
     "download-video": {
       "suggested_key": {
-        "mac": "Command+Alt+2"
+        "mac": "Command+Shift+2"
       },
       "description": "Download media"
     },
     "scrape-videos": {
       "suggested_key": {
-        "mac": "Command+Alt+3"
+        "mac": "Command+Shift+3"
       },
       "description": "Extract direct videos"
     }
