@@ -165,17 +165,18 @@
       }
     }
     
-    // Check for img children
-    const img = element.querySelector('img');
-    if (img) {
-      return extractImageURL(img); // Recursive call to check lazy loading
-    }
-    
-    // Check parent for img
-    if (element.parentElement) {
-      const parentImg = element.parentElement.querySelector('img');
-      if (parentImg) {
-        return extractImageURL(parentImg); // Recursive call to check lazy loading
+    // Only recurse into children/parent when not already on an <img> —
+    // recursing from an <img> back to its parent finds the same element and loops forever
+    if (element.tagName !== 'IMG') {
+      const img = element.querySelector('img');
+      if (img) {
+        return extractImageURL(img);
+      }
+      if (element.parentElement) {
+        const parentImg = element.parentElement.querySelector('img');
+        if (parentImg) {
+          return extractImageURL(parentImg);
+        }
       }
     }
     
