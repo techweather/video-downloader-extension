@@ -4,17 +4,12 @@
 chrome.runtime.onInstalled.addListener(() => {
   chrome.contextMenus.create({
     id: "pick-images",
-    title: "🖼️  Pick Images (ESC to stop)",
+    title: "🖼️  Image Picker (ESC to stop)",
     contexts: ["all"]
   });
   chrome.contextMenus.create({
     id: "download-video",
-    title: "🔗  Download Media (works with platform URLs)",
-    contexts: ["all"]
-  });
-  chrome.contextMenus.create({
-    id: "scrape-videos",
-    title: "🔎  Extract Direct Videos (scrapes page source)",
+    title: "🎬  Video Download (this page)",
     contexts: ["all"]
   });
 });
@@ -175,7 +170,242 @@ function collectPageData() {
   };
 }
 
-async function triggerVideoDownload(tab, contextInfo) {
+// Self-contained DOM scan injected into the page as a last resort.
+// Returns results directly — no message passing needed.
+function domScanForVideos() {
+  const videos = [];
+  const processedUrls = new Set();
+  let blobVideoCount = 0;
+
+  function resolveUrl(url) {
+    if (!url) return null;
+    try { return new URL(url, window.location.href).href; } catch { return null; }
+  }
+
+  function findNearbyText(element) {
+    let parent = element;
+    let attempts = 0;
+    while (parent && attempts < 5) {
+      parent = parent.parentElement;
+      attempts++;
+      const headings = parent ? parent.querySelectorAll('h1, h2, h3, h4, h5') : [];
+      for (const heading of headings) {
+        const text = heading.textContent.trim();
+        if (text && text.length > 3 && text.length < 100) return text;
+      }
+      if (parent) {
+        const ariaLabel = parent.getAttribute('aria-label');
+        if (ariaLabel && ariaLabel.length > 3) return ariaLabel;
+        const title = parent.getAttribute('title');
+        if (title && title.length > 3) return title;
+      }
+    }
+    return null;
+  }
+
+  function findNearbyImage(element) {
+    if (element && element.poster) return resolveUrl(element.poster);
+    let parent = element;
+    let attempts = 0;
+    while (parent && attempts < 4) {
+      parent = parent.parentElement;
+      attempts++;
+      if (parent) {
+        const imgs = parent.querySelectorAll('img');
+        for (const img of imgs) {
+          if (img.src && !img.src.includes('data:') && img.width > 50) return resolveUrl(img.src);
+        }
+        const bgImage = window.getComputedStyle(parent).backgroundImage;
+        if (bgImage && bgImage !== 'none') {
+          const match = bgImage.match(/url\(["']?(.+?)["']?\)/);
+          if (match && !match[1].includes('data:')) return resolveUrl(match[1]);
+        }
+      }
+    }
+    const allImages = document.querySelectorAll('img');
+    for (const img of allImages) {
+      if (img.src && !img.src.includes('data:') && img.width > 200 && img.height > 100) return resolveUrl(img.src);
+    }
+    return null;
+  }
+
+  function getFilenameFromUrl(url) {
+    try {
+      const filename = new URL(url).pathname.split('/').pop();
+      if (filename && filename.includes('.')) return filename.split('.')[0];
+    } catch {}
+    return null;
+  }
+
+  // 1. <video> elements
+  document.querySelectorAll('video').forEach((video) => {
+    if (video.src) {
+      if (video.src.startsWith('blob:')) { blobVideoCount++; }
+      else {
+        const url = resolveUrl(video.src);
+        if (url && !processedUrls.has(url)) {
+          processedUrls.add(url);
+          const title = findNearbyText(video) || getFilenameFromUrl(url) || ('Video ' + (videos.length + 1));
+          videos.push({ url, type: 'direct', title, thumbnail: findNearbyImage(video), originalFilename: getFilenameFromUrl(url) });
+        }
+      }
+    }
+    video.querySelectorAll('source').forEach(source => {
+      if (source.src && source.src.startsWith('blob:')) { blobVideoCount++; return; }
+      const url = resolveUrl(source.src);
+      if (url && !processedUrls.has(url)) {
+        processedUrls.add(url);
+        const title = findNearbyText(video) || getFilenameFromUrl(url) || ('Video ' + (videos.length + 1));
+        videos.push({ url, type: source.type || 'direct', title, thumbnail: findNearbyImage(video), originalFilename: getFilenameFromUrl(url) });
+      }
+    });
+  });
+
+  // 2. data attribute videos
+  document.querySelectorAll('[data-video-src], [data-mp4-src], video[data-src]').forEach(element => {
+    ['data-video-src', 'data-mp4-src', 'data-src'].forEach(attr => {
+      const fullUrl = resolveUrl(element.getAttribute(attr));
+      if (fullUrl && !processedUrls.has(fullUrl)) {
+        processedUrls.add(fullUrl);
+        const title = findNearbyText(element) || getFilenameFromUrl(fullUrl) || ('Video ' + (videos.length + 1));
+        videos.push({ url: fullUrl, type: 'data-attribute', title, thumbnail: findNearbyImage(element), originalFilename: getFilenameFromUrl(fullUrl) });
+      }
+    });
+  });
+
+  // 3. srcset with .mp4
+  document.querySelectorAll('[srcset*=".mp4"]').forEach(element => {
+    const srcset = element.getAttribute('srcset');
+    if (srcset) {
+      (srcset.match(/[^\s,]+\.mp4/g) || []).forEach(match => {
+        const url = resolveUrl(match);
+        if (url && !processedUrls.has(url)) {
+          processedUrls.add(url);
+          const title = findNearbyText(element) || getFilenameFromUrl(url) || ('Video ' + (videos.length + 1));
+          videos.push({ url, type: 'srcset', title, thumbnail: findNearbyImage(element), originalFilename: getFilenameFromUrl(url) });
+        }
+      });
+    }
+  });
+
+  // 4. Squarespace (data-config-video)
+  document.querySelectorAll('[data-config-video]').forEach(element => {
+    try {
+      const config = JSON.parse(element.getAttribute('data-config-video') || '{}');
+      const sc = config.structuredContent || {};
+      const alexandriaUrl = sc.alexandriaUrl || config.alexandriaUrl;
+      if (alexandriaUrl && config.systemDataId) {
+        const hlsUrl = alexandriaUrl.replace(/\{variant\}$/, '').replace(/\/$/, '') + '/playlist.m3u8';
+        if (!processedUrls.has(hlsUrl)) {
+          processedUrls.add(hlsUrl);
+          const title = config.filename ? config.filename.replace(/\.[^.]+$/, '') : findNearbyText(element) || ('Video ' + (videos.length + 1));
+          videos.push({ url: hlsUrl, type: 'hls', title, thumbnail: findNearbyImage(element), originalFilename: config.filename || null });
+        }
+      }
+    } catch (e) {}
+  });
+
+  // 5. All data-* attributes containing video URLs
+  document.querySelectorAll('*').forEach(element => {
+    for (const attr of element.attributes) {
+      if (!attr.name.startsWith('data-') || attr.name === 'data-config-video') continue;
+      if (!attr.value || attr.value.length > 2000) continue;
+      const urlMatches = attr.value.match(/https?:\/\/[^\s"'<>]+\.(mp4|webm|mov|m3u8)(\?[^\s"'<>]*)?/gi);
+      if (urlMatches) {
+        urlMatches.forEach(url => {
+          if (!processedUrls.has(url)) {
+            processedUrls.add(url);
+            const title = findNearbyText(element) || getFilenameFromUrl(url) || ('Video ' + (videos.length + 1));
+            videos.push({ url, type: url.toLowerCase().includes('.m3u8') ? 'hls' : 'data-attribute', title, thumbnail: findNearbyImage(element), originalFilename: getFilenameFromUrl(url) });
+          }
+        });
+      }
+    }
+  });
+
+  // 6. Inline <script> tags
+  document.querySelectorAll('script:not([src])').forEach(script => {
+    const text = script.textContent;
+    if (!text || text.length > 500000) return;
+    const urlPattern = /https?:\/\/[^\s"'<>{}]+\.(mp4|webm|mov)(\?[^\s"'<>{}]*)?/gi;
+    let match;
+    while ((match = urlPattern.exec(text)) !== null) {
+      const url = match[0];
+      if (!processedUrls.has(url)) {
+        processedUrls.add(url);
+        videos.push({ url, type: 'script-json', title: getFilenameFromUrl(url) || ('Video ' + (videos.length + 1)), thumbnail: null, originalFilename: getFilenameFromUrl(url) });
+      }
+    }
+  });
+
+  // 7. Preload/prefetch link tags
+  document.querySelectorAll('link[rel="preload"][as="video"], link[rel="prefetch"][as="video"], link[rel="preload"][href*=".mp4"], link[rel="preload"][href*=".webm"], link[rel="prefetch"][href*=".mp4"]').forEach(link => {
+    const url = resolveUrl(link.href);
+    if (url && !processedUrls.has(url)) {
+      processedUrls.add(url);
+      videos.push({ url, type: 'preload', title: getFilenameFromUrl(url) || ('Video ' + (videos.length + 1)), thumbnail: null, originalFilename: getFilenameFromUrl(url) });
+    }
+  });
+
+  // 8. Meta tags
+  ['meta[property="og:video"]', 'meta[property="og:video:url"]', 'meta[property="og:video:secure_url"]', 'meta[name="twitter:player:stream"]'].forEach(selector => {
+    const meta = document.querySelector(selector);
+    if (meta && meta.content) {
+      const url = resolveUrl(meta.content);
+      if (url && !processedUrls.has(url)) {
+        processedUrls.add(url);
+        videos.push({ url, type: url.toLowerCase().includes('.m3u8') ? 'hls' : 'meta-tag', title: document.title || ('Video ' + (videos.length + 1)), thumbnail: null, originalFilename: getFilenameFromUrl(url) });
+      }
+    }
+  });
+
+  // 9. Mux detection
+  const muxIds = new Set();
+  document.querySelectorAll('mux-player[playback-id]').forEach(p => { const id = p.getAttribute('playback-id'); if (id) muxIds.add(id); });
+  document.querySelectorAll('mux-player[poster*="image.mux.com"]').forEach(p => { const m = p.getAttribute('poster').match(/image\.mux\.com\/([A-Za-z0-9]+)/); if (m) muxIds.add(m[1]); });
+  document.querySelectorAll('img[src*="image.mux.com"]').forEach(img => { const m = img.src.match(/image\.mux\.com\/([A-Za-z0-9]+)/); if (m) muxIds.add(m[1]); });
+  document.querySelectorAll('[srcset*="image.mux.com"], [style*="image.mux.com"], [poster*="image.mux.com"]').forEach(el => {
+    const text = el.getAttribute('srcset') || el.getAttribute('style') || el.getAttribute('poster') || '';
+    for (const m of text.matchAll(/image\.mux\.com\/([A-Za-z0-9]+)/g)) muxIds.add(m[1]);
+  });
+  const nextDataScript = document.querySelector('script#__NEXT_DATA__');
+  if (nextDataScript) {
+    try { for (const m of nextDataScript.textContent.matchAll(/"playbackId"\s*:\s*"([A-Za-z0-9]+)"/g)) muxIds.add(m[1]); } catch (e) {}
+  }
+  document.querySelectorAll('script:not([src])').forEach(script => {
+    const text = script.textContent;
+    if (text.includes('playbackId') || text.includes('mux.com')) {
+      for (const m of text.matchAll(/"playbackId"\s*:\s*"([A-Za-z0-9]+)"/g)) muxIds.add(m[1]);
+    }
+  });
+
+  const cleanPageTitle = (document.title || '').replace(/\s*[|\u2014\u2013-]\s*[^|\u2014\u2013-]*$/, '').trim() || 'Video';
+  let muxIndex = 0;
+  const muxTotal = muxIds.size;
+  muxIds.forEach(playbackId => {
+    const downloadUrl = 'https://stream.mux.com/' + playbackId + '/high.mp4';
+    if (!processedUrls.has(downloadUrl)) {
+      processedUrls.add(downloadUrl);
+      muxIndex++;
+      let title = null;
+      const muxPlayer = document.querySelector('mux-player[playback-id="' + playbackId + '"]');
+      if (muxPlayer) title = findNearbyText(muxPlayer);
+      if (!title) { const thumbImg = document.querySelector('img[src*="' + playbackId + '"]'); if (thumbImg) title = findNearbyText(thumbImg); }
+      if (!title) title = muxTotal > 1 ? cleanPageTitle + ' - Video ' + muxIndex : cleanPageTitle;
+      videos.push({ url: downloadUrl, type: 'mux', title, thumbnail: 'https://image.mux.com/' + playbackId + '/thumbnail.jpg?time=0', originalFilename: playbackId });
+    }
+  });
+
+  return { videos, blobVideoCount, pageTitle: document.title, pageUrl: window.location.href };
+}
+
+// Combined video download:
+// 1. Run collectPageData to find platform embeds (Vimeo/YouTube/Mux)
+// 2. If found, send to app directly
+// 3. If not, classify the URL via /classify
+// 4. If supported by yt-dlp, send as video
+// 5. If not, run DOM scan as last resort
+async function triggerCombinedVideoDownload(tab) {
   let results;
   try {
     results = await chrome.scripting.executeScript({
@@ -189,99 +419,120 @@ async function triggerVideoDownload(tab, contextInfo) {
   const result = (results && results[0] && results[0].result) || { embeds: [], pageData: {} };
   const videoEmbeds = result.embeds;
   const pageData = result.pageData;
+  const pageUrl = pageData.url || tab.url;
 
-  const url = (contextInfo && (contextInfo.linkUrl || contextInfo.srcUrl || contextInfo.pageUrl)) || pageData.url || tab.url;
-
-  if (videoEmbeds.length >= 2) {
-    const detectedVideos = videoEmbeds.map(video => ({
-      id: video.id,
-      platform: video.platform,
-      url: video.url,
-      title: video.title
-    }));
-    sendToNativeApp({
-      type: 'video',
-      url,
-      title: pageData.title || tab.title,
-      thumbnail: pageData.thumbnail,
-      pageUrl: pageData.url || (contextInfo && contextInfo.pageUrl) || tab.url,
-      source: pageData.source || new URL(url).hostname,
-      detectedMultipleEmbeds: true,
-      embedCount: videoEmbeds.length,
-      embedPlatforms: videoEmbeds.map(v => v.platform),
-      detectedVideos
-    }, tab.id);
-  } else {
-    sendToNativeApp({
-      type: 'video',
-      url,
-      title: pageData.title || tab.title,
-      thumbnail: pageData.thumbnail,
-      pageUrl: pageData.url || (contextInfo && contextInfo.pageUrl) || tab.url,
-      source: pageData.source || new URL(url).hostname
-    }, tab.id);
-  }
-}
-
-async function triggerScrapeVideos(tab) {
-  // Show scroll-first reminder in the tab context (alert/confirm not available in service worker)
-  let confirmResults;
-  try {
-    confirmResults = await chrome.scripting.executeScript({
-      target: { tabId: tab.id },
-      func: function() {
-        return confirm(
-          "📄 IMPORTANT: Video Detection Tips\n\n" +
-          "✅ For best results, SCROLL through the entire page first!\n" +
-          "✅ This loads lazy-loaded videos and dynamic content\n" +
-          "✅ Wait for videos to appear before running this scan\n\n" +
-          "Many modern websites only load videos when they come into view.\n\n" +
-          "Click OK to proceed with video detection, or Cancel to scroll first."
-        );
-      }
-    });
-  } catch (e) {
+  if (videoEmbeds.length >= 1) {
+    if (videoEmbeds.length >= 2) {
+      sendToNativeApp({
+        type: 'video',
+        url: pageUrl,
+        title: pageData.title || tab.title,
+        thumbnail: pageData.thumbnail,
+        pageUrl,
+        source: pageData.source || new URL(pageUrl).hostname,
+        detectedMultipleEmbeds: true,
+        embedCount: videoEmbeds.length,
+        embedPlatforms: videoEmbeds.map(v => v.platform),
+        detectedVideos: videoEmbeds.map(v => ({ id: v.id, platform: v.platform, url: v.url, title: v.title }))
+      }, tab.id);
+    } else {
+      sendToNativeApp({
+        type: 'video',
+        url: pageUrl,
+        title: pageData.title || tab.title,
+        thumbnail: pageData.thumbnail,
+        pageUrl,
+        source: pageData.source || new URL(pageUrl).hostname
+      }, tab.id);
+    }
     return;
   }
 
-  const userConfirmed = confirmResults && confirmResults[0] && confirmResults[0].result;
-  if (!userConfirmed) return;
-
+  // No platform embeds — classify the URL
+  let classified;
   try {
-    await chrome.scripting.executeScript({
-      target: { tabId: tab.id },
-      files: ["video-scrape.js"]
+    const response = await fetch('http://127.0.0.1:5555/classify', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ url: pageUrl })
     });
-  } catch (e) {}
+    classified = await response.json();
+  } catch {
+    chrome.scripting.executeScript({
+      target: { tabId: tab.id },
+      func: () => alert('Failed to connect to dlwithit app. Make sure it is running.')
+    }).catch(() => {});
+    return;
+  }
+
+  if (classified.supported) {
+    sendToNativeApp({
+      type: 'video',
+      url: pageUrl,
+      title: pageData.title || tab.title,
+      thumbnail: pageData.thumbnail,
+      pageUrl,
+      source: pageData.source || new URL(pageUrl).hostname
+    }, tab.id);
+  } else {
+    // DOM scan — last resort
+    let scanResults;
+    try {
+      scanResults = await chrome.scripting.executeScript({
+        target: { tabId: tab.id },
+        func: domScanForVideos
+      });
+    } catch (e) {
+      return;
+    }
+
+    const scan = (scanResults && scanResults[0] && scanResults[0].result) || { videos: [], blobVideoCount: 0 };
+    if (scan.videos.length === 0) {
+      let msg = 'No downloadable videos found on this page.';
+      if (scan.blobVideoCount > 0) {
+        msg += '\n\nDetected ' + scan.blobVideoCount + ' video player(s) using blob: URLs (streaming). Try navigating to a specific video page first, then use Video Download.';
+      } else {
+        msg += '\nThe page may use a different video delivery method or videos may not be loaded yet.';
+      }
+      chrome.scripting.executeScript({
+        target: { tabId: tab.id },
+        func: (message) => alert(message),
+        args: [msg]
+      }).catch(() => {});
+    } else {
+      sendToNativeApp({
+        type: 'video-list',
+        videos: scan.videos,
+        pageTitle: scan.pageTitle,
+        pageUrl: scan.pageUrl,
+        source: new URL(scan.pageUrl).hostname
+      }, tab.id);
+    }
+  }
 }
 
 // Keyboard shortcuts
-chrome.commands.onCommand.addListener((command) => {
-  chrome.tabs.query({ active: true, currentWindow: true }, function(tabs) {
-    if (!tabs || !tabs[0]) return;
-    const tab = tabs[0];
-    if (command === "pick-images") {
-      chrome.scripting.executeScript({ target: { tabId: tab.id }, files: ["image-picker.js"] });
-    } else if (command === "download-video") {
-      triggerVideoDownload(tab, null);
-    } else if (command === "scrape-videos") {
-      triggerScrapeVideos(tab);
-    }
-  });
+chrome.commands.onCommand.addListener(async (command) => {
+  const tabs = await chrome.tabs.query({ active: true, currentWindow: true });
+  if (!tabs || !tabs[0]) return;
+  const tab = tabs[0];
+  if (command === "pick-images") {
+    chrome.scripting.executeScript({ target: { tabId: tab.id }, files: ["image-picker.js"] });
+  } else if (command === "download-video") {
+    triggerCombinedVideoDownload(tab);
+  }
 });
 
 // Context menu clicks
 chrome.contextMenus.onClicked.addListener((info, tab) => {
   if (info.menuItemId === "download-video") {
-    triggerVideoDownload(tab, info);
+    triggerCombinedVideoDownload(tab);
   } else if (info.menuItemId === "pick-images") {
     chrome.scripting.executeScript({ target: { tabId: tab.id }, files: ["image-picker.js"] });
-  } else if (info.menuItemId === "scrape-videos") {
-    triggerScrapeVideos(tab);
   }
 });
 
-// Messages from content scripts
+// Messages from content scripts (image-picker.js)
 chrome.runtime.onMessage.addListener((message, sender) => {
   if (message.action === "download-image") {
     sendToNativeApp({
@@ -290,14 +541,6 @@ chrome.runtime.onMessage.addListener((message, sender) => {
       thumbnail: message.thumbnail || message.url,
       pageUrl: sender.tab.url,
       source: new URL(sender.tab.url).hostname
-    });
-  } else if (message.action === "videos-found") {
-    sendToNativeApp({
-      type: 'video-list',
-      videos: message.videos,
-      pageTitle: message.pageTitle,
-      pageUrl: message.pageUrl,
-      source: new URL(message.pageUrl).hostname
     });
   }
 });

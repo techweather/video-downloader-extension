@@ -27,19 +27,13 @@
       "suggested_key": {
         "mac": "Command+MacCtrl+1"
       },
-      "description": "Pick images"
+      "description": "Image Picker"
     },
     "download-video": {
       "suggested_key": {
         "mac": "Command+MacCtrl+2"
       },
-      "description": "Download media"
-    },
-    "scrape-videos": {
-      "suggested_key": {
-        "mac": "Command+MacCtrl+3"
-      },
-      "description": "Extract direct videos"
+      "description": "Video Download"
     }
   }
 }
