@@ -1,0 +1,635 @@
+// Image picker - injected into pages for continuous image selection
+(function() {
+  // Avoid re-injection
+  if (window.__imagePickerActive) return;
+  window.__imagePickerActive = true;
+
+  let picking = true;
+  let highlightBox = null;
+  let lastHighlightedElement = null;
+  let activeSelector = null; // Track if selector is currently open
+
+  // Create highlight box
+  function createHighlightBox() {
+    highlightBox = document.createElement('div');
+    highlightBox.style.position = 'fixed';
+    highlightBox.style.pointerEvents = 'none';
+    highlightBox.style.border = '3px solid #3498db';
+    highlightBox.style.backgroundColor = 'rgba(52, 152, 219, 0.1)';
+    highlightBox.style.zIndex = '999999';
+    highlightBox.style.display = 'none';
+    highlightBox.style.transition = 'all 0.1s ease';
+    document.body.appendChild(highlightBox);
+  }
+
+  // Create toast notification
+  function showToast(message, type = 'info') {
+    const toast = document.createElement('div');
+    toast.style.position = 'fixed';
+    toast.style.bottom = '20px';
+    toast.style.left = '50%';
+    toast.style.transform = 'translateX(-50%)';
+    toast.style.backgroundColor = type === 'success' ? '#27ae60' : '#3498db';
+    toast.style.color = 'white';
+    toast.style.padding = '12px 24px';
+    toast.style.borderRadius = '6px';
+    toast.style.fontSize = '14px';
+    toast.style.zIndex = '999999';
+    toast.style.boxShadow = '0 4px 6px rgba(0,0,0,0.1)';
+    toast.textContent = message;
+    
+    document.body.appendChild(toast);
+    
+    setTimeout(() => {
+      toast.style.opacity = '0';
+      toast.style.transition = 'opacity 0.3s ease';
+      setTimeout(() => toast.remove(), 300);
+    }, 2000);
+  }
+
+  // Extract image URL from element
+  function extractImageURL(element) {
+    if (!element) return null;
+    
+    
+    // Direct img tag
+    if (element.tagName === 'IMG') {
+      let url = null;
+      let source = '';
+
+      // Check lazy loading attributes FIRST (before src)
+      if (element.dataset.src) {
+        url = element.dataset.src;
+        source = 'data-src';
+      } else if (element.dataset.lazy) {
+        url = element.dataset.lazy;
+        source = 'data-lazy';
+      } else if (element.dataset.original) {
+        url = element.dataset.original;
+        source = 'data-original';
+      } else if (element.dataset.fullsize) {
+        url = element.dataset.fullsize;
+        source = 'data-fullsize';
+      } else if (element.dataset.highres) {
+        url = element.dataset.highres;
+        source = 'data-highres';
+      } else if (element.currentSrc && element.currentSrc !== element.src && element.currentSrc.includes('.')) {
+        // currentSrc shows what the browser actually displays (could be from srcset)
+        url = element.currentSrc;
+        source = 'currentSrc';
+      } else if (element.srcset) {
+        // Parse srcset to get the largest image
+        const srcsetEntries = element.srcset.split(',').map(s => s.trim());
+        let largestUrl = null;
+        let largestWidth = 0;
+        
+        for (const entry of srcsetEntries) {
+          const [entryUrl, descriptor] = entry.split(' ');
+          if (descriptor && descriptor.endsWith('w')) {
+            const width = parseInt(descriptor);
+            if (width > largestWidth) {
+              largestWidth = width;
+              largestUrl = entryUrl;
+            }
+          }
+        }
+        
+        if (largestUrl) {
+          url = largestUrl;
+          source = 'srcset (largest)';
+        } else if (srcsetEntries.length > 0) {
+          // If no width descriptors, take the first one
+          url = srcsetEntries[0].split(' ')[0];
+          source = 'srcset (first)';
+        }
+      } else if (element.src && !element.src.endsWith('/') && element.src.includes('.')) {
+        // Only use src if it looks like an actual image URL
+        url = element.src;
+        source = 'src';
+      }
+      
+      if (url) {
+        // Filter out tiny placeholder images (likely < 10KB)
+        if (url.startsWith('data:image/') && url.length < 13000) { // ~10KB base64
+          return null;
+        }
+        return url;
+      }
+    }
+    
+    // Background image
+    const bgImage = window.getComputedStyle(element).backgroundImage;
+    if (bgImage && bgImage !== 'none') {
+      const match = bgImage.match(/url\(["']?(.+?)["']?\)/);
+      if (match) {
+        const url = match[1];
+        
+        // Filter out common empty/placeholder patterns
+        if (url.startsWith('data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///') || // 1x1 transparent gif
+            url.startsWith('data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg==') || // 1x1 transparent png
+            url === 'about:blank') {
+          return null;
+        }
+        return url;
+      }
+    }
+    
+    // Check for img children
+    const img = element.querySelector('img');
+    if (img && img !== element) {
+      return extractImageURL(img); // Recursive call to check lazy loading
+    }
+
+    // Check parent for img — guard against returning the element itself,
+    // which causes infinite recursion (parent.querySelector('img') can return
+    // the current element when it IS the img and has no other img descendants).
+    if (element.parentElement) {
+      const parentImg = element.parentElement.querySelector('img');
+      if (parentImg && parentImg !== element) {
+        return extractImageURL(parentImg); // Recursive call to check lazy loading
+      }
+    }
+    
+    return null;
+  }
+
+  // Find all images at a point (for layered images)
+  function findImagesAtPoint(x, y, clickTarget) {
+    const elements = document.elementsFromPoint(x, y);
+    const images = [];
+
+    // Check if the click target is an <img> or has a direct <img> child
+    const clickedImg = clickTarget && (
+      clickTarget.tagName === 'IMG' ? clickTarget :
+      clickTarget.querySelector && clickTarget.querySelector('img')
+    );
+
+    for (const el of elements) {
+      const url = extractImageURL(el);
+      // Skip empty URLs or data URLs (often just transparent overlays)
+      if (url && !images.some(img => img.url === url) && !url.startsWith('data:')) {
+        images.push({
+          url: url,
+          element: el,
+          type: el.tagName === 'IMG' ? 'img' : 'background'
+        });
+      }
+    }
+
+    // If an actual <img> was clicked, hide background entries (they're just parent containers)
+    if (clickedImg) {
+      const imgOnly = images.filter(img => img.type === 'img');
+      if (imgOnly.length > 0) {
+        return imgOnly;
+      }
+    }
+
+    // Sort: img entries first, then background
+    images.sort((a, b) => (a.type === 'img' ? 0 : 1) - (b.type === 'img' ? 0 : 1));
+
+    return images;
+  }
+
+  // Update highlight box position
+  function updateHighlight(element) {
+    if (!element || element === document.body) {
+      highlightBox.style.display = 'none';
+      return;
+    }
+    
+    const rect = element.getBoundingClientRect();
+    highlightBox.style.top = rect.top + 'px';
+    highlightBox.style.left = rect.left + 'px';
+    highlightBox.style.width = rect.width + 'px';
+    highlightBox.style.height = rect.height + 'px';
+    highlightBox.style.display = 'block';
+  }
+
+  // Try to get high-res version
+  function getHighResUrl(url) {
+    // If already has _2x, return as-is
+    if (url.includes('_2x')) {
+      return url;
+    }
+    
+    // Only try to add _2x for Apple domains
+    if (url.includes('apple.com')) {
+      // Apple-specific patterns for high-res images
+      const patterns = [
+        { search: /(\.\w+)$/, replace: '_2x$1' },
+        { search: /_\d+x\d+(\.\w+)$/, replace: '_2x$1' }
+      ];
+      
+      for (const pattern of patterns) {
+        if (pattern.search.test(url)) {
+          return url.replace(pattern.search, pattern.replace);
+        }
+      }
+    }
+    
+    // For all other sites, return original URL to prevent 404s
+    return url;
+  }
+
+  // Close the active selection box and clean up any hover previews
+  function closeSelector() {
+    if (!activeSelector) return;
+    const hoverPreviews = document.querySelectorAll('img[style*="position: fixed"][style*="width: 200px"]');
+    hoverPreviews.forEach(preview => preview.remove());
+    activeSelector.remove();
+    activeSelector = null;
+  }
+
+  // Handle mouse move
+  function onMouseMove(e) {
+    if (!picking) return;
+    
+    const target = e.target;
+    if (target === highlightBox) return;
+    
+    // Don't update highlights if selector is open
+    if (activeSelector) return;
+    
+    // Find the nearest image-containing element
+    let imageElement = target;
+    let attempts = 0;
+    
+    while (imageElement && attempts < 5) {
+      if (extractImageURL(imageElement)) {
+        break;
+      }
+      imageElement = imageElement.parentElement;
+      attempts++;
+    }
+    
+    if (imageElement && extractImageURL(imageElement)) {
+      updateHighlight(imageElement);
+      lastHighlightedElement = imageElement;
+    } else {
+      highlightBox.style.display = 'none';
+      lastHighlightedElement = null;
+    }
+  }
+
+  // Handle click
+  function onClick(e) {
+    if (!picking) return;
+
+    // Let clicks inside our own UI elements (selector popup, highlight box)
+    // pass through so their own handlers (item.onclick, close button) still fire.
+    if (activeSelector && activeSelector.contains(e.target)) return;
+    if (highlightBox && highlightBox.contains(e.target)) return;
+
+    e.preventDefault();
+    e.stopPropagation();
+
+    // Click was outside the open selector — close it and stop.
+    // (handleOutsideClick can't be used here because onClick runs in capture
+    // phase and stopPropagation above would prevent it from ever firing.)
+    if (activeSelector) {
+      closeSelector();
+      return;
+    }
+
+    const images = findImagesAtPoint(e.clientX, e.clientY, e.target);
+
+    // Filter out placeholder images before showing selector
+    const validImages = images.filter(img => {
+      return !img.url.includes('placeholder') &&
+             !img.url.includes('blank') &&
+             !img.url.includes('transparent');
+    });
+
+    if (validImages.length === 0) {
+      showToast('No image found at this location');
+      return;
+    }
+
+    if (validImages.length === 1) {
+      // Single image - download directly
+      const url = validImages[0].url;
+      const highResUrl = getHighResUrl(url);
+
+      chrome.runtime.sendMessage({
+        action: 'download-image',
+        url: highResUrl
+      });
+
+      showToast('Image sent to downloader', 'success');
+    } else {
+      // Multiple images - show selector only if not already open
+      if (!activeSelector) {
+        showImageSelector(validImages, e.clientX, e.clientY);
+      }
+    }
+  }
+
+  // Show image selector for multiple images with fixed positioning
+  function showImageSelector(images, x, y) {
+    // Close any existing selector first
+    if (activeSelector) {
+      activeSelector.remove();
+      activeSelector = null;
+    }
+
+    const selector = document.createElement('div');
+    selector.setAttribute('data-image-selector', 'true');
+    activeSelector = selector; // Track the active selector
+    
+    selector.style.position = 'fixed';
+    
+    // Calculate optimal position to keep selector on screen
+    const maxWidth = 300;
+    const maxHeight = 400;
+    
+    // Adjust position to keep selector on screen
+    const viewportWidth = window.innerWidth;
+    const viewportHeight = window.innerHeight;
+    
+    let selectorX = Math.min(x, viewportWidth - maxWidth - 20);
+    let selectorY = Math.min(y, viewportHeight - maxHeight - 20);
+    
+    // Ensure minimum margins
+    selectorX = Math.max(10, selectorX);
+    selectorY = Math.max(10, selectorY);
+    
+    selector.style.left = selectorX + 'px';
+    selector.style.top = selectorY + 'px';
+    selector.style.backgroundColor = 'white';
+    selector.style.border = '2px solid #3498db';
+    selector.style.borderRadius = '8px';
+    selector.style.boxShadow = '0 8px 20px rgba(0,0,0,0.3)';
+    selector.style.zIndex = '999999';
+    selector.style.padding = '15px';
+    selector.style.maxWidth = maxWidth + 'px';
+    selector.style.maxHeight = maxHeight + 'px';
+    selector.style.overflowY = 'auto';
+    selector.style.fontFamily = 'Arial, sans-serif';
+    
+    // Add header with close button
+    const header = document.createElement('div');
+    header.style.display = 'flex';
+    header.style.justifyContent = 'space-between';
+    header.style.alignItems = 'center';
+    header.style.marginBottom = '15px';
+    header.style.paddingBottom = '10px';
+    header.style.borderBottom = '1px solid #ddd';
+    
+    const title = document.createElement('div');
+    title.textContent = `Select Image (${images.length} found)`;
+    title.style.fontWeight = 'bold';
+    title.style.fontSize = '14px';
+    title.style.color = '#333';
+    
+    const closeBtn = document.createElement('button');
+    closeBtn.innerHTML = '×';
+    closeBtn.style.background = 'none';
+    closeBtn.style.border = 'none';
+    closeBtn.style.fontSize = '20px';
+    closeBtn.style.cursor = 'pointer';
+    closeBtn.style.color = '#666';
+    closeBtn.style.padding = '0';
+    closeBtn.style.width = '24px';
+    closeBtn.style.height = '24px';
+    closeBtn.onclick = () => closeSelector();
+    
+    header.appendChild(title);
+    header.appendChild(closeBtn);
+    selector.appendChild(header);
+    
+    // Add download counter
+    let downloadCount = 0;
+    const counter = document.createElement('div');
+    counter.style.fontSize = '12px';
+    counter.style.color = '#666';
+    counter.style.marginBottom = '10px';
+    counter.textContent = `Downloads: ${downloadCount}`;
+    selector.appendChild(counter);
+    
+    images.forEach((img, index) => {
+      const item = document.createElement('div');
+      item.style.display = 'flex';
+      item.style.alignItems = 'center';
+      item.style.padding = '8px';
+      item.style.cursor = 'pointer';
+      item.style.borderRadius = '4px';
+      item.style.marginBottom = '5px';
+      item.style.border = '1px solid transparent';
+      
+      item.onmouseover = () => {
+        item.style.backgroundColor = '#f0f8ff';
+        item.style.border = '1px solid #3498db';
+      };
+      
+      item.onmouseout = () => {
+        item.style.backgroundColor = 'transparent';
+        item.style.border = '1px solid transparent';
+      };
+      
+      const preview = document.createElement('img');
+      preview.src = img.url;
+      preview.style.width = '80px';
+      preview.style.height = '80px';
+      preview.style.objectFit = 'cover';
+      preview.style.marginRight = '12px';
+      preview.style.borderRadius = '4px';
+      preview.style.border = '1px solid #ddd';
+      preview.title = img.url;
+      
+      // Only hide items for data URLs or known placeholder patterns
+      preview.onerror = () => {
+        // Check if it's a data URL or placeholder image that should be hidden
+        if (img.url.startsWith('data:') ||
+            img.url.includes('placeholder') ||
+            img.url.includes('blank') ||
+            img.url.includes('transparent') ||
+            img.url.includes('empty.gif') ||
+            img.url.includes('spacer.gif')) {
+          item.style.display = 'none';
+        } else {
+          // For regular HTTP URLs, show a broken image icon instead of hiding
+          preview.style.opacity = '0.5';
+          preview.style.border = '2px dashed #ccc';
+          preview.alt = 'Failed to load';
+        }
+      };
+      
+      // Add hover preview functionality
+      let hoverPreview = null;
+      
+      preview.onmouseenter = () => {
+        // Create hover preview
+        hoverPreview = document.createElement('img');
+        hoverPreview.src = img.url;
+        hoverPreview.style.position = 'fixed';
+        hoverPreview.style.width = '200px';
+        hoverPreview.style.height = '200px';
+        hoverPreview.style.objectFit = 'contain';
+        hoverPreview.style.backgroundColor = 'white';
+        hoverPreview.style.border = '2px solid #3498db';
+        hoverPreview.style.borderRadius = '8px';
+        hoverPreview.style.boxShadow = '0 8px 20px rgba(0,0,0,0.3)';
+        hoverPreview.style.zIndex = '999999';
+        hoverPreview.style.pointerEvents = 'none';
+        hoverPreview.style.padding = '8px';
+        
+        // Position adjacent to the hovered item
+        const selectorRect = selector.getBoundingClientRect();
+        const itemRect = item.getBoundingClientRect();
+        const viewportWidth = window.innerWidth;
+        const viewportHeight = window.innerHeight;
+        
+        let previewX, previewY;
+        
+        // Horizontal positioning - try right of selector first, then left
+        if (selectorRect.right + 220 < viewportWidth) {
+          // Position to the right of selector
+          previewX = selectorRect.right + 10;
+        }
+        else if (selectorRect.left - 220 > 0) {
+          // Position to the left of selector
+          previewX = selectorRect.left - 220;
+        }
+        else {
+          // Fallback positioning
+          previewX = Math.max(10, Math.min(selectorRect.left, viewportWidth - 220));
+        }
+        
+        // Vertical positioning - align top edge with hovered item's top edge
+        previewY = itemRect.top;
+        
+        // Ensure preview stays within viewport bounds
+        previewY = Math.max(10, Math.min(previewY, viewportHeight - 220));
+        
+        hoverPreview.style.left = previewX + 'px';
+        hoverPreview.style.top = previewY + 'px';
+        
+        document.body.appendChild(hoverPreview);
+      };
+      
+      preview.onmouseleave = () => {
+        if (hoverPreview) {
+          hoverPreview.remove();
+          hoverPreview = null;
+        }
+      };
+      
+      const info = document.createElement('div');
+      info.style.fontSize = '12px';
+      info.style.flex = '1';
+      
+      // Create a shortened URL for display
+      const shortUrl = img.url.length > 40 ? img.url.substring(0, 40) + '...' : img.url;
+      
+      const typeDiv = document.createElement('div');
+      typeDiv.style.cssText = 'color: #333; font-weight: 500;';
+      typeDiv.textContent = `Type: ${img.type}`;
+
+      const urlDiv = document.createElement('div');
+      urlDiv.style.cssText = 'color: #666; font-size: 11px; margin-top: 2px;';
+      urlDiv.textContent = shortUrl;
+
+      const ctaDiv = document.createElement('div');
+      ctaDiv.style.cssText = 'color: #3498db; font-size: 11px; margin-top: 2px;';
+      ctaDiv.textContent = 'Click to download';
+
+      info.appendChild(typeDiv);
+      info.appendChild(urlDiv);
+      info.appendChild(ctaDiv);
+      
+      item.appendChild(preview);
+      item.appendChild(info);
+      
+      item.onclick = (clickEvent) => {
+        clickEvent.stopPropagation(); // Prevent event bubbling
+        
+        const highResUrl = getHighResUrl(img.url);
+        chrome.runtime.sendMessage({
+          action: 'download-image',
+          url: highResUrl,
+          thumbnail: img.url
+        });
+        
+        // Update counter
+        downloadCount++;
+        counter.textContent = `Downloads: ${downloadCount}`;
+        
+        // Visual feedback - briefly highlight the downloaded item
+        item.style.backgroundColor = '#d4edda';
+        item.style.border = '1px solid #27ae60';
+        setTimeout(() => {
+          item.style.backgroundColor = 'transparent';
+          item.style.border = '1px solid transparent';
+        }, 1000);
+        
+        showToast('Image sent to downloader', 'success');
+        
+        // Don't close selector - keep it open for multi-selection
+      };
+      
+      selector.appendChild(item);
+    });
+    
+    // Add instructions
+    const instructions = document.createElement('div');
+    instructions.style.fontSize = '11px';
+    instructions.style.color = '#666';
+    instructions.style.marginTop = '10px';
+    instructions.style.padding = '8px';
+    instructions.style.backgroundColor = '#f8f9fa';
+    instructions.style.borderRadius = '4px';
+    instructions.textContent = 'Click images to download multiple. Click outside, press ESC, or click × to close.';
+    selector.appendChild(instructions);
+    
+    document.body.appendChild(selector);
+    
+  }
+
+  // Handle escape key
+  function onKeyDown(e) {
+    if (e.key === 'Escape') {
+      if (activeSelector) {
+        closeSelector();
+        return; // Don't exit picker mode, just close selector
+      }
+      cleanup();
+      showToast('Image picker deactivated');
+    }
+  }
+
+  // Cleanup
+  function cleanup() {
+    picking = false;
+    window.__imagePickerActive = false;
+    closeSelector();
+    
+    document.removeEventListener('mousemove', onMouseMove);
+    document.removeEventListener('click', onClick, true);
+    document.removeEventListener('keydown', onKeyDown);
+    
+    if (highlightBox) {
+      highlightBox.remove();
+    }
+    
+    // Remove cursor style
+    const cursorStyle = document.getElementById('image-picker-cursor');
+    if (cursorStyle) cursorStyle.remove();
+  }
+
+  // Initialize
+  createHighlightBox();
+  document.addEventListener('mousemove', onMouseMove);
+  // Use capture phase so our handler runs before page scripts (e.g. Apple's
+  // scroll-interaction overlays) that call stopPropagation in capture phase.
+  document.addEventListener('click', onClick, true);
+  document.addEventListener('keydown', onKeyDown);
+  
+  // Show initial message
+  showToast('Image picker activated - Click images to download, ESC to exit');
+  
+  // Change cursor
+  const style = document.createElement('style');
+  style.textContent = '* { cursor: crosshair !important; }';
+  style.id = 'image-picker-cursor';
+  document.head.appendChild(style);
+})();

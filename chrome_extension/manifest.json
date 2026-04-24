@@ -1,0 +1,34 @@
+{
+  "manifest_version": 3,
+  "name": "dlwithit Connector",
+  "version": "1.0.0",
+  "description": "Browser extension for dlwithit - download images and videos from the web",
+  "permissions": ["contextMenus", "activeTab", "scripting"],
+  "host_permissions": ["<all_urls>", "http://127.0.0.1:5555/*"],
+  "background": {
+    "service_worker": "service-worker.js"
+  },
+  "icons": {
+    "16": "icons/icon-16.png",
+    "32": "icons/icon-32.png",
+    "48": "icons/icon-48.png",
+    "96": "icons/icon-96.png",
+    "128": "icons/icon-128.png"
+  },
+  "commands": {
+    "pick-images": {
+      "suggested_key": {
+        "default": "Ctrl+F1",
+        "mac": "Command+F1"
+      },
+      "description": "Image Picker"
+    },
+    "download-video": {
+      "suggested_key": {
+        "default": "Ctrl+F2",
+        "mac": "Command+F2"
+      },
+      "description": "Video Download"
+    }
+  }
+}
