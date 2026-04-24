@@ -1,21 +1,13 @@
 // Create context menu items
 browser.contextMenus.create({
   id: "pick-images",
-  title: "Image Picker (ESC to stop)",
-  icons: {
-    16: "icons/image-picker-16.png",
-    32: "icons/image-picker-32.png"
-  },
+  title: "🏞️  Image Picker (ESC to stop)",
   contexts: ["all"]
 });
 
 browser.contextMenus.create({
   id: "download-video",
-  title: "Video Download (this page)",
-  icons: {
-    16: "icons/video-download-16.png",
-    32: "icons/video-download-32.png"
-  },
+  title: "▶️  Video Download",
   contexts: ["all"]
 });
 
