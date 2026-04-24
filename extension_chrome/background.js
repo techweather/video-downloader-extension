@@ -451,16 +451,18 @@ async function triggerCombinedVideoDownload(tab) {
   // No platform embeds — classify the URL
   let classified;
   try {
-    const response = await fetch('http://127.0.0.1:5555/classify', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ url: pageUrl })
-    });
-    classified = await response.json();
+    classified = await withAutoLaunch(
+      () => fetch('http://127.0.0.1:5555/classify', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ url: pageUrl })
+      }).then(r => r.json()),
+      tab.id
+    );
   } catch {
     chrome.scripting.executeScript({
       target: { tabId: tab.id },
-      func: () => alert('Failed to connect to dlwithit app. Make sure it is running.')
+      func: () => alert('Could not connect to dlwithit. Please open the app and try again.')
     }).catch(() => {});
     return;
   }
@@ -545,19 +547,60 @@ chrome.runtime.onMessage.addListener((message, sender) => {
   }
 });
 
-async function sendToNativeApp(data, tabId) {
+// Opens dlwithit via URL scheme, shows a toast while waiting, then retries fn().
+// Throws if the retry also fails (caller handles final error).
+async function withAutoLaunch(fn, tabId) {
   try {
-    const response = await fetch('http://127.0.0.1:5555/download', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(data)
-    });
-    return await response.json();
-  } catch (error) {
+    return await fn();
+  } catch {
+    // Trigger macOS to launch the app
+    try {
+      const t = await chrome.tabs.create({ url: 'dlwithit://wake', active: false });
+      setTimeout(() => chrome.tabs.remove(t.id).catch(() => {}), 1500);
+    } catch {}
+
+    // Show a toast in the page while waiting
     if (tabId) {
       chrome.scripting.executeScript({
         target: { tabId },
-        func: () => alert('Failed to connect to dlwithit app. Make sure it is running.')
+        func: () => {
+          const d = document.createElement('div');
+          d.id = '__dlwithit_toast';
+          d.style.cssText = 'position:fixed;bottom:24px;right:24px;z-index:2147483647;background:#1c1c2e;color:#e8e8f0;padding:12px 18px;border-radius:8px;font:14px/1.4 -apple-system,sans-serif;box-shadow:0 4px 16px rgba(0,0,0,.4)';
+          d.textContent = 'Launching dlwithit\u2026';
+          document.body.appendChild(d);
+        }
+      }).catch(() => {});
+    }
+
+    await new Promise(r => setTimeout(r, 4000));
+
+    // Remove toast
+    if (tabId) {
+      chrome.scripting.executeScript({
+        target: { tabId },
+        func: () => { const d = document.getElementById('__dlwithit_toast'); if (d) d.remove(); }
+      }).catch(() => {});
+    }
+
+    return await fn();
+  }
+}
+
+async function sendToNativeApp(data, tabId) {
+  const post = () => fetch('http://127.0.0.1:5555/download', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(data)
+  }).then(r => r.json());
+
+  try {
+    return await withAutoLaunch(post, tabId);
+  } catch {
+    if (tabId) {
+      chrome.scripting.executeScript({
+        target: { tabId },
+        func: () => alert('Could not connect to dlwithit. Please open the app and try again.')
       }).catch(() => {});
     }
   }

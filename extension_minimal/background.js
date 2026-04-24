@@ -652,8 +652,9 @@ function triggerCombinedVideoDownload(tab) {
           });
         }
       })
-      .catch(() => {
-        alert('Failed to connect to downloader app. Make sure it is running.');
+      .catch(async () => {
+        await tryLaunchApp();
+        alert('Launching dlwithit app. Please try the download again in a few seconds.');
       });
     }
   });
@@ -718,24 +719,31 @@ browser.runtime.onMessage.addListener((message, sender) => {
   }
 });
 
+// Opens dlwithit via URL scheme to trigger macOS auto-launch.
+async function tryLaunchApp() {
+  try {
+    const t = await browser.tabs.create({ url: 'dlwithit://wake', active: false });
+    setTimeout(() => browser.tabs.remove(t.id).catch(() => {}), 1500);
+  } catch {}
+}
+
 // Send data to native app
-function sendToNativeApp(data) {
-
-  // Simple HTTP POST to local native app
-
-  fetch('http://127.0.0.1:5555/download', {
+async function sendToNativeApp(data) {
+  const post = () => fetch('http://127.0.0.1:5555/download', {
     method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-    },
+    headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(data)
-  })
-  .then(response => {
-    return response.json();
-  })
-  .then(result => {
-  })
-  .catch(error => {
-    alert('Failed to connect to downloader app. Make sure it is running.');
-  });
+  }).then(r => r.json());
+
+  try {
+    await post();
+  } catch {
+    await tryLaunchApp();
+    await new Promise(r => setTimeout(r, 4000));
+    try {
+      await post();
+    } catch {
+      alert('Could not connect to dlwithit. Please open the app and try again.');
+    }
+  }
 }
