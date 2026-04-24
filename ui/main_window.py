@@ -649,11 +649,12 @@ class MainWindow(QMainWindow):
         }
         
         self.download_queue.put(download_queue_data)
-        
+
         # Update UI status
         item_widget.status_label.setText("Starting...")
         item_widget.status_label.setStyleSheet("color: #5ab0ff;")
-        
+        item_widget.cancel_btn.show()
+
         # Show system notification
         media_type = data.get('type', 'video').capitalize()
         self.tray_icon.showMessage(
@@ -942,11 +943,12 @@ class MainWindow(QMainWindow):
         }
         
         self.download_queue.put(download_queue_data)
-        
+
         # Update UI status
         item_widget.status_label.setText("Starting...")
         item_widget.status_label.setStyleSheet("color: #5ab0ff;")
-        
+        item_widget.cancel_btn.show()
+
         self._update_status_footer()
     
     def cancel_download(self, download_id):
