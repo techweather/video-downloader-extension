@@ -9,11 +9,42 @@ from pathlib import Path
 from datetime import datetime
 from urllib.parse import urlparse, unquote
 
+# Must be set before yt_dlp.YoutubeDL() is first instantiated.
+# In a PyInstaller bundle on macOS, platform.mac_ver()[0] returns '' which
+# causes yt_dlp.plugins.load_plugins() → get_executable_path() →
+# _get_variant_and_executable_path() → version_tuple('') → ValueError.
+# YTDLP_NO_PLUGINS is checked at the top of load_plugins() and short-circuits
+# the entire code path before get_executable_path() is ever called.
+os.environ.setdefault('YTDLP_NO_PLUGINS', '1')
+
 from PyQt5.QtCore import QThread, pyqtSignal
 import yt_dlp
 
-from .encoder import VideoEncoder, needs_encoding_check
+from .encoder import VideoEncoder, file_needs_encoding, get_ffmpeg_dir
 from .metadata import embed_image_metadata, embed_video_metadata
+
+
+def _detect_image_extension(filepath):
+    """
+    Read the first 12 magic bytes to determine the actual image format.
+    Returns the correct extension (no dot, e.g. 'webp') or None if unrecognised.
+    """
+    try:
+        with open(filepath, 'rb') as f:
+            header = f.read(12)
+    except OSError:
+        return None
+
+    if header[:3] == b'\xff\xd8\xff':
+        return 'jpg'
+    if header[:4] == b'\x89PNG':
+        return 'png'
+    if header[:4] == b'RIFF' and header[8:12] == b'WEBP':
+        return 'webp'
+    if header[:4] == b'GIF8':
+        return 'gif'
+    return None
+
 
 class YtDlpLogger:
     """Custom logger to capture yt-dlp messages, including skip notifications."""
@@ -89,7 +120,7 @@ class DownloadWorker(QThread):
         
         # Get current download info for directory scanning
         download_info = getattr(self, 'current_download_info', {})
-        save_path = download_info.get('save_path', str(Path.home() / 'Downloads' / 'Media'))
+        save_path = download_info.get('save_path', str(Path.home() / 'Downloads' / 'dlwithit'))
         
         # Clean up tracked files
         files_to_remove = list(self.partial_files)
@@ -372,6 +403,19 @@ class DownloadWorker(QThread):
             
             # Remove from partial files once complete
             self.partial_files.discard(str(filepath))
+
+            # Rename if the server lied about the file type (e.g. WebP served as .jpg).
+            # This matters for both exiftool (wrong extension → parse error) and the user.
+            actual_ext = _detect_image_extension(str(filepath))
+            if actual_ext and actual_ext != filepath.suffix.lstrip('.').lower():
+                new_path = filepath.with_suffix(f'.{actual_ext}')
+                counter = 1
+                while new_path.exists():
+                    new_path = filepath.parent / f"{filepath.stem}_{counter}.{actual_ext}"
+                    counter += 1
+                filepath.rename(new_path)
+                filepath = new_path
+
             return str(filepath)
             
         except requests.exceptions.HTTPError as e:
@@ -558,7 +602,7 @@ class DownloadWorker(QThread):
                 
             try:
                 # Get the save path and settings for this download
-                save_path = download.get('save_path', str(Path.home() / 'Downloads' / 'Media'))
+                save_path = download.get('save_path', str(Path.home() / 'Downloads' / 'dlwithit'))
                 organize_by_platform = download.get('organize_by_platform', True)
                 metadata_option = download.get('metadata_option', 'none')
                 
@@ -578,7 +622,8 @@ class DownloadWorker(QThread):
                         embed_success = embed_image_metadata(
                             filepath=filepath,
                             source_url=download['url'],
-                            page_title=page_title
+                            page_title=page_title,
+                            page_url=referrer
                         )
                     if self.current_download_id not in self.cancelled_downloads:
                         self.download_complete.emit(download['id'], filepath)
@@ -587,7 +632,7 @@ class DownloadWorker(QThread):
                     self.status_update.emit(self.current_download_id, 'downloading')
                     referrer = download.get('referrer')
                     title = download.get('title', 'video')
-                    save_path = download.get('save_path', str(Path.home() / 'Downloads' / 'Media'))
+                    save_path = download.get('save_path', str(Path.home() / 'Downloads' / 'dlwithit'))
                     organize_by_platform = download.get('organize_by_platform', True)
                     
                     # Create videos directory if organizing
@@ -603,16 +648,19 @@ class DownloadWorker(QThread):
                     safe_title = re.sub(r'[<>:"/\\|?*]', '-', title).strip().rstrip('.')
                     if not safe_title:
                         safe_title = 'video'
+                    safe_title = safe_title[:100]
                     filename = f"{safe_title}{ext}"
                     
                     filepath = video_dir / filename
-                    
-                    # Handle duplicates
+
+                    # Direct video URLs often use generic filenames (e.g. "xlarge_2x.mp4"),
+                    # so different videos can share the same name. Use a counter suffix
+                    # rather than skipping, to avoid dropping legitimate downloads.
                     counter = 1
                     while filepath.exists():
-                        filepath = video_dir / f"{title}_{counter}{ext}"
+                        filepath = video_dir / f"{safe_title}_{counter}{ext}"
                         counter += 1
-                    
+
                     # Track this file for cleanup if cancelled
                     self.partial_files.add(str(filepath))
                     
@@ -659,7 +707,7 @@ class DownloadWorker(QThread):
                     if self.current_download_id not in self.cancelled_downloads:
                         # Check if direct-video file needs encoding
                         
-                        needs_encoding = needs_encoding_check(str(filepath))
+                        needs_encoding = file_needs_encoding(str(filepath))
                         encode_setting = download.get('encode_vp9', True)
                         
                         
@@ -762,6 +810,12 @@ class DownloadWorker(QThread):
                             'ffmpeg_i': ['-allowed_extensions', 'ALL', '-extension_picky', '0']
                         }
                     }
+
+                    # When running as a bundled .app, PATH doesn't include Homebrew so yt-dlp
+                    # can't find ffmpeg on its own. Point it explicitly to the bundled binary.
+                    ffmpeg_dir = get_ffmpeg_dir()
+                    if ffmpeg_dir:
+                        ydl_opts['ffmpeg_location'] = ffmpeg_dir
                     
                     # Add referrer headers if available
                     referrer = download.get('referrer')
@@ -782,9 +836,6 @@ class DownloadWorker(QThread):
                     
                     # Add metadata options if enabled (sidecar files)
                     if metadata_option == 'sidecar':
-                        metadata_dir = Path(save_path) / '_metadata'
-                        metadata_dir.mkdir(parents=True, exist_ok=True)
-                        
                         ydl_opts.update({
                             'writethumbnail': True,
                             'writedescription': True,
@@ -848,9 +899,6 @@ class DownloadWorker(QThread):
                         else:
                             raise extract_error  # Re-raise original error
                     
-                    # Check if video needs encoding
-                    needs_encoding = needs_encoding_check(info)
-
                     # Check if yt-dlp's title is useless (generic/HLS sources)
                     ytdlp_title_is_useless = (
                         info.get('extractor', '').lower() == 'generic' and
@@ -1132,13 +1180,12 @@ class DownloadWorker(QThread):
                             
                             # For Instagram carousels with sidecar metadata, move stray metadata files
                             if metadata_option == 'sidecar' and 'instagram.com' in download['url']:
-                                metadata_path = Path(save_path) / '_metadata'
-                                
-                                # Look for stray metadata files in the video folder
                                 if organize_by_platform:
                                     video_folder = Path(save_path) / 'Instagram'
+                                    metadata_path = video_folder / '_metadata'
                                 else:
                                     video_folder = Path(save_path)
+                                    metadata_path = video_folder / '_metadata'
                                 
                                 # Move any metadata files that ended up in the wrong place
                                 for pattern in ['*.info.json', '*.description', '*.webloc', '*.url']:
@@ -1169,7 +1216,7 @@ class DownloadWorker(QThread):
 
 
                                 for file_path in downloaded_files:
-                                    if needs_encoding and encode_setting:
+                                    if encode_setting and file_needs_encoding(file_path):
                                         metadata_info = {
                                             'metadata_option': download.get('metadata_option'),
                                             'info': info,
@@ -1256,8 +1303,8 @@ Possible Causes:
                                 # NOTE: If we reach here, skip was NOT detected (continue would have skipped this)
                                 
                                 encode_setting = download.get('encode_vp9', True)
-                                
-                                if needs_encoding and encode_setting:
+
+                                if encode_setting and file_needs_encoding(final_path):
                                     # Emit encoding_needed signal - EncodingWorker will handle the actual encoding
                                     metadata_info = {
                                         'metadata_option': download.get('metadata_option'),

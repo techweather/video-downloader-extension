@@ -56,37 +56,7 @@
     if (element.tagName === 'IMG') {
       let url = null;
       let source = '';
-      
-      // First check if src is just a base URL - if so, log ALL attributes
-      if (element.src && (element.src.endsWith('/') || !element.src.includes('.'))) {
-        
-        // Log all standard attributes
-        for (let i = 0; i < element.attributes.length; i++) {
-          const attr = element.attributes[i];
-        }
-        
-        // Log all dataset properties
-        for (const [key, value] of Object.entries(element.dataset)) {
-        }
-        
-        // Log all properties of the element object
-        const allProps = Object.keys(element);
-        allProps.forEach(prop => {
-          try {
-            const value = element[prop];
-            if (typeof value === 'string' && value.length > 0 && value.length < 500) {
-            } else if (typeof value === 'number' || typeof value === 'boolean') {
-            }
-          } catch (e) {
-            // Skip properties that can't be accessed
-          }
-        });
-        
-        // Check srcset specifically
-        if (element.srcset) {
-        }
-      }
-      
+
       // Check lazy loading attributes FIRST (before src)
       if (element.dataset.src) {
         url = element.dataset.src;
@@ -144,7 +114,6 @@
           return null;
         }
         return url;
-      } else {
       }
     }
     
@@ -167,14 +136,16 @@
     
     // Check for img children
     const img = element.querySelector('img');
-    if (img) {
+    if (img && img !== element) {
       return extractImageURL(img); // Recursive call to check lazy loading
     }
-    
-    // Check parent for img
+
+    // Check parent for img — guard against returning the element itself,
+    // which causes infinite recursion (parent.querySelector('img') can return
+    // the current element when it IS the img and has no other img descendants).
     if (element.parentElement) {
       const parentImg = element.parentElement.querySelector('img');
-      if (parentImg) {
+      if (parentImg && parentImg !== element) {
         return extractImageURL(parentImg); // Recursive call to check lazy loading
       }
     }
@@ -260,6 +231,15 @@
     return url;
   }
 
+  // Close the active selection box and clean up any hover previews
+  function closeSelector() {
+    if (!activeSelector) return;
+    const hoverPreviews = document.querySelectorAll('img[style*="position: fixed"][style*="width: 200px"]');
+    hoverPreviews.forEach(preview => preview.remove());
+    activeSelector.remove();
+    activeSelector = null;
+  }
+
   // Handle mouse move
   function onMouseMove(e) {
     if (!picking) return;
@@ -294,34 +274,47 @@
   // Handle click
   function onClick(e) {
     if (!picking) return;
-    
+
+    // Let clicks inside our own UI elements (selector popup, highlight box)
+    // pass through so their own handlers (item.onclick, close button) still fire.
+    if (activeSelector && activeSelector.contains(e.target)) return;
+    if (highlightBox && highlightBox.contains(e.target)) return;
+
     e.preventDefault();
     e.stopPropagation();
-    
+
+    // Click was outside the open selector — close it and stop.
+    // (handleOutsideClick can't be used here because onClick runs in capture
+    // phase and stopPropagation above would prevent it from ever firing.)
+    if (activeSelector) {
+      closeSelector();
+      return;
+    }
+
     const images = findImagesAtPoint(e.clientX, e.clientY, e.target);
-    
+
     // Filter out placeholder images before showing selector
     const validImages = images.filter(img => {
-      return !img.url.includes('placeholder') && 
+      return !img.url.includes('placeholder') &&
              !img.url.includes('blank') &&
              !img.url.includes('transparent');
     });
-    
+
     if (validImages.length === 0) {
       showToast('No image found at this location');
       return;
     }
-    
+
     if (validImages.length === 1) {
       // Single image - download directly
       const url = validImages[0].url;
       const highResUrl = getHighResUrl(url);
-      
+
       browser.runtime.sendMessage({
         action: 'download-image',
         url: highResUrl
       });
-      
+
       showToast('Image sent to downloader', 'success');
     } else {
       // Multiple images - show selector only if not already open
@@ -398,14 +391,7 @@
     closeBtn.style.padding = '0';
     closeBtn.style.width = '24px';
     closeBtn.style.height = '24px';
-    closeBtn.onclick = () => {
-      // Remove any hover preview elements before closing selector
-      const hoverPreviews = document.querySelectorAll('img[style*="position: fixed"][style*="width: 200px"]');
-      hoverPreviews.forEach(preview => preview.remove());
-      
-      selector.remove();
-      activeSelector = null;
-    };
+    closeBtn.onclick = () => closeSelector();
     
     header.appendChild(title);
     header.appendChild(closeBtn);
@@ -535,11 +521,21 @@
       // Create a shortened URL for display
       const shortUrl = img.url.length > 40 ? img.url.substring(0, 40) + '...' : img.url;
       
-      info.innerHTML = `
-        <div style="color: #333; font-weight: 500;">Type: ${img.type}</div>
-        <div style="color: #666; font-size: 11px; margin-top: 2px;">${shortUrl}</div>
-        <div style="color: #3498db; font-size: 11px; margin-top: 2px;">Click to download</div>
-      `;
+      const typeDiv = document.createElement('div');
+      typeDiv.style.cssText = 'color: #333; font-weight: 500;';
+      typeDiv.textContent = `Type: ${img.type}`;
+
+      const urlDiv = document.createElement('div');
+      urlDiv.style.cssText = 'color: #666; font-size: 11px; margin-top: 2px;';
+      urlDiv.textContent = shortUrl;
+
+      const ctaDiv = document.createElement('div');
+      ctaDiv.style.cssText = 'color: #3498db; font-size: 11px; margin-top: 2px;';
+      ctaDiv.textContent = 'Click to download';
+
+      info.appendChild(typeDiv);
+      info.appendChild(urlDiv);
+      info.appendChild(ctaDiv);
       
       item.appendChild(preview);
       item.appendChild(info);
@@ -582,50 +578,20 @@
     instructions.style.padding = '8px';
     instructions.style.backgroundColor = '#f8f9fa';
     instructions.style.borderRadius = '4px';
-    instructions.textContent = 'Click images to download multiple. Press ESC or click × to close.';
+    instructions.textContent = 'Click images to download multiple. Click outside, press ESC, or click × to close.';
     selector.appendChild(instructions);
     
     document.body.appendChild(selector);
     
-    // Handle clicks outside selector (but don't close it immediately)
-    const handleOutsideClick = (event) => {
-      if (!selector.contains(event.target)) {
-        // Only close if it's been open for at least 500ms to prevent accidental closure
-        setTimeout(() => {
-          if (activeSelector === selector) {
-            // Remove any hover preview elements before closing selector
-            const hoverPreviews = document.querySelectorAll('img[style*="position: fixed"][style*="width: 200px"]');
-            hoverPreviews.forEach(preview => preview.remove());
-            
-            selector.remove();
-            activeSelector = null;
-            document.removeEventListener('click', handleOutsideClick);
-          }
-        }, 200);
-      }
-    };
-    
-    // Add outside click handler after a brief delay
-    setTimeout(() => {
-      document.addEventListener('click', handleOutsideClick);
-    }, 100);
   }
 
   // Handle escape key
   function onKeyDown(e) {
     if (e.key === 'Escape') {
-      // Always remove any hover preview elements first
-      const hoverPreviews = document.querySelectorAll('img[style*="position: fixed"][style*="width: 200px"]');
-      hoverPreviews.forEach(preview => preview.remove());
-      
-      // Close any open selector first
       if (activeSelector) {
-        activeSelector.remove();
-        activeSelector = null;
+        closeSelector();
         return; // Don't exit picker mode, just close selector
       }
-      
-      // Exit picker mode
       cleanup();
       showToast('Image picker deactivated');
     }
@@ -635,19 +601,10 @@
   function cleanup() {
     picking = false;
     window.__imagePickerActive = false;
-    
-    // Remove any active hover preview elements
-    const hoverPreviews = document.querySelectorAll('img[style*="position: fixed"][style*="width: 200px"]');
-    hoverPreviews.forEach(preview => preview.remove());
-    
-    // Close any active selector
-    if (activeSelector) {
-      activeSelector.remove();
-      activeSelector = null;
-    }
+    closeSelector();
     
     document.removeEventListener('mousemove', onMouseMove);
-    document.removeEventListener('click', onClick);
+    document.removeEventListener('click', onClick, true);
     document.removeEventListener('keydown', onKeyDown);
     
     if (highlightBox) {
@@ -662,7 +619,9 @@
   // Initialize
   createHighlightBox();
   document.addEventListener('mousemove', onMouseMove);
-  document.addEventListener('click', onClick);
+  // Use capture phase so our handler runs before page scripts (e.g. Apple's
+  // scroll-interaction overlays) that call stopPropagation in capture phase.
+  document.addEventListener('click', onClick, true);
   document.addEventListener('keydown', onKeyDown);
   
   // Show initial message

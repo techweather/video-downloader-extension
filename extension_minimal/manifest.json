@@ -1,7 +1,7 @@
 {
   "manifest_version": 2,
   "name": "dlwithit Connector",
-  "version": "2.0",
+  "version": "1.0.0",
   "description": "Browser extension for dlwithit - download images and videos from the web",
   "permissions": [
     "contextMenus",
@@ -20,27 +20,29 @@
     "96": "icons/icon-96.png",
     "128": "icons/icon-128.png"
   },
+  "browser_specific_settings": {
+    "gecko": {
+      "id": "dlwithit@dlwithit.app",
+      "strict_min_version": "140.0",
+      "data_collection_permissions": {
+        "required": ["none"]
+      }
+    }
+  },
   "commands": {
     "pick-images": {
       "suggested_key": {
         "default": "Ctrl+F1",
         "mac": "Command+F1"
       },
-      "description": "Pick images"
+      "description": "Image Picker"
     },
     "download-video": {
       "suggested_key": {
         "default": "Ctrl+F2",
         "mac": "Command+F2"
       },
-      "description": "Download media"
-    },
-    "scrape-videos": {
-      "suggested_key": {
-        "default": "Ctrl+F3",
-        "mac": "Command+F3"
-      },
-      "description": "Extract direct videos"
+      "description": "Video Download"
     }
   }
 }

@@ -10,13 +10,14 @@ from pathlib import Path
 from datetime import datetime
 from urllib.parse import urlparse
 
-from PyQt5.QtWidgets import (QMainWindow, QWidget, QVBoxLayout, QHBoxLayout, 
-                           QPushButton, QLabel, QListWidget, QListWidgetItem, 
-                           QSystemTrayIcon, QMenu, QAction, QCheckBox, QComboBox,
+from PyQt5.QtWidgets import (QMainWindow, QWidget, QVBoxLayout, QHBoxLayout, QGridLayout,
+                           QPushButton, QLabel, QListWidget, QListWidgetItem, QAbstractItemView,
+                           QSystemTrayIcon, QMenu, QAction, QCheckBox, QComboBox, QSizePolicy,
                            QFileDialog, QApplication, QDesktopWidget)
-from PyQt5.QtCore import pyqtSignal, QRect
-from PyQt5.QtGui import QIcon, QResizeEvent, QMoveEvent
+from PyQt5.QtCore import Qt, pyqtSignal, QRect
+from PyQt5.QtGui import QIcon
 
+from version import __version__
 from config.settings import Settings
 from core.downloader import DownloadWorker
 from core.encoder import EncodingWorker
@@ -84,371 +85,223 @@ class MainWindow(QMainWindow):
         self.setCentralWidget(central_widget)
         
         layout = QVBoxLayout()
-        
+        layout.setContentsMargins(16, 16, 16, 12)
+
         # Create UI sections
-        self._create_location_section(layout)
         self._create_settings_section(layout)
+        layout.addSpacing(8)
         self._create_download_queue_section(layout)
         
-        # Status bar
-        self.status_label = QLabel("Ready")
-        layout.addWidget(self.status_label)
+        # Footer: active downloads (left) + queue count (right)
+        footer_layout = QHBoxLayout()
+        self.status_label = QLabel("Active downloads: 0")
+        self.status_label.setStyleSheet("color: #aaa; font-size: 12px;")
+        self.queue_label = QLabel("")
+        self.queue_label.setStyleSheet("color: #aaa; font-size: 12px;")
+        self.queue_label.setAlignment(Qt.AlignRight)
+        footer_layout.addWidget(self.status_label)
+        footer_layout.addStretch()
+        footer_layout.addWidget(self.queue_label)
+        layout.addLayout(footer_layout)
         
         central_widget.setLayout(layout)
     
-    def _create_location_section(self, parent_layout):
-        """Create the save location section"""
-        location_widget = QWidget()
-        location_layout = QHBoxLayout()
-        location_layout.setContentsMargins(10, 5, 10, 5)
-        
-        # Location display
-        location_label = QLabel("Save to:")
-        location_label.setStyleSheet("color: #333;")
-        self.location_display = QLabel(self.get_display_path())
-        self.location_display.setStyleSheet("color: #2c3e50; font-weight: bold;")
-        
-        # Custom location checkbox
-        self.use_custom_checkbox = QCheckBox("Use custom location")
-        self.use_custom_checkbox.setChecked(self.settings['use_custom_location'])
-        self.use_custom_checkbox.toggled.connect(self.toggle_custom_location)
-        self.use_custom_checkbox.setStyleSheet("""
-            QCheckBox { 
-                color: #333;
-                spacing: 8px;
-            }
-            QCheckBox::indicator {
-                width: 18px;
-                height: 18px;
-                border: 2px solid #666;
-                border-radius: 3px;
-                background-color: #fff;
-            }
-            QCheckBox::indicator:checked {
-                background-color: #3498db;
-                border-color: #2980b9;
-                image: url(data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iMTAiIGhlaWdodD0iNyIgdmlld0JveD0iMCAwIDEwIDciIGZpbGw9Im5vbmUiIHhtbG5zPSJodHRwOi8vd3d3LnczLm9yZy8yMDAwL3N2ZyI+CjxwYXRoIGQ9Ik04LjUgMS41TDMuNSA2LjVMMSA0IiBzdHJva2U9IndoaXRlIiBzdHJva2Utd2lkdGg9IjIiIHN0cm9rZS1saW5lY2FwPSJyb3VuZCIgc3Ryb2tlLWxpbmVqb2luPSJyb3VuZCIvPgo8L3N2Zz4K);
-            }
-            QCheckBox::indicator:unchecked {
-                background-color: #f8f9fa;
-                border-color: #666;
-            }
-            QCheckBox::indicator:hover {
-                border-color: #3498db;
-            }
-        """)
-        
-        # Change location button
-        self.change_location_btn = QPushButton("Change Location")
-        self.change_location_btn.clicked.connect(self.change_save_location)
-        self.change_location_btn.setStyleSheet("""
-            QPushButton {
-                background: #3498db;
-                color: white;
-                border: none;
-                padding: 5px 10px;
-                border-radius: 3px;
-            }
-            QPushButton:hover {
-                background: #2980b9;
-            }
-        """)
-        
-        # Assemble location layout
-        location_layout.addWidget(location_label)
-        location_layout.addWidget(self.location_display)
-        location_layout.addStretch()
-        location_layout.addWidget(self.use_custom_checkbox)
-        location_layout.addWidget(self.change_location_btn)
-        
-        location_widget.setLayout(location_layout)
-        location_widget.setStyleSheet("QWidget { background-color: #ecf0f1; border-radius: 5px; }")
-        
-        parent_layout.addWidget(location_widget)
-    
     def _create_settings_section(self, parent_layout):
-        """Create the settings section"""
+        """Create the combined save location + settings section"""
         settings_widget = QWidget()
+        settings_widget.setObjectName("settingsPanel")
         settings_layout = QVBoxLayout()
         settings_layout.setContentsMargins(10, 10, 10, 10)
-        
-        # Encoding settings row
-        encoding_row = QHBoxLayout()
-        
+        settings_layout.setSpacing(8)
+
+        # === Save location widget (goes in grid row 0, col 0) ===
+        location_widget = QWidget()
+        location_inner = QHBoxLayout()
+        location_inner.setContentsMargins(0, 0, 0, 0)
+        location_inner.setSpacing(4)
+        location_label = QLabel("Save to:")
+        location_label.setStyleSheet("color: #888; font-size: 11px;")
+        self.location_display = QLabel(self.get_display_path())
+        self.location_display.setStyleSheet("color: #e0e0e0; font-size: 12px;")
+        self.location_display.setSizePolicy(QSizePolicy.Maximum, QSizePolicy.Preferred)
+        change_link = QLabel("Change")
+        change_link.setStyleSheet("color: #888; font-size: 11px;")
+        change_link.setCursor(Qt.PointingHandCursor)
+        change_link.mousePressEvent = lambda _: self.change_save_location()
+        change_link.enterEvent = lambda _: change_link.setStyleSheet(
+            "color: #5ab0ff; font-size: 11px; text-decoration: underline;")
+        change_link.leaveEvent = lambda _: change_link.setStyleSheet(
+            "color: #888; font-size: 11px;")
+        location_inner.addWidget(location_label)
+        location_inner.addWidget(self.location_display)
+        location_inner.addSpacing(6)
+        location_inner.addWidget(change_link)
+        location_inner.addStretch()
+        location_widget.setLayout(location_inner)
+
+        checkmark_path = os.path.join(self._assets_dir, 'checkmark.svg').replace('\\', '/')
+        _chk_style = f"""
+            QCheckBox {{
+                color: #e0e0e0;
+                spacing: 8px;
+            }}
+            QCheckBox::indicator {{
+                width: 16px;
+                height: 16px;
+                border-radius: 4px;
+                border: 1px solid #555;
+                background: #444;
+            }}
+            QCheckBox::indicator:checked {{
+                background: #5ab0ff;
+                border: 1px solid #5ab0ff;
+                image: url({checkmark_path});
+            }}
+        """
+
         self.encode_checkbox = QCheckBox("Auto-encode WebM/VP9 to H.264")
         self.encode_checkbox.setChecked(self.settings.get('encode_vp9', True))
         self.encode_checkbox.toggled.connect(self.save_settings)
-        self.encode_checkbox.setStyleSheet("""
-            QCheckBox { 
-                color: #333;
-                spacing: 8px;
-            }
-            QCheckBox::indicator {
-                width: 18px;
-                height: 18px;
-                border: 2px solid #666;
-                border-radius: 3px;
-                background-color: #fff;
-            }
-            QCheckBox::indicator:checked {
-                background-color: #3498db;
-                border-color: #2980b9;
-                image: url(data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iMTAiIGhlaWdodD0iNyIgdmlld0JveD0iMCAwIDEwIDciIGZpbGw9Im5vbmUiIHhtbG5zPSJodHRwOi8vd3d3LnczLm9yZy8yMDAwL3N2ZyI+CjxwYXRoIGQ9Ik04LjUgMS41TDMuNSA2LjVMMSA0IiBzdHJva2U9IndoaXRlIiBzdHJva2Utd2lkdGg9IjIiIHN0cm9rZS1saW5lY2FwPSJyb3VuZCIgc3Ryb2tlLWxpbmVqb2luPSJyb3VuZCIvPgo8L3N2Zz4K);
-            }
-            QCheckBox::indicator:unchecked {
-                background-color: #f8f9fa;
-                border-color: #666;
-            }
-            QCheckBox::indicator:hover {
-                border-color: #3498db;
-            }
-        """)
-        
+        self.encode_checkbox.setStyleSheet(_chk_style)
+
         self.keep_original_checkbox = QCheckBox("Keep original after encoding")
         self.keep_original_checkbox.setChecked(self.settings.get('keep_original', False))
         self.keep_original_checkbox.toggled.connect(self.save_settings)
-        self.keep_original_checkbox.setStyleSheet("""
-            QCheckBox { 
-                color: #333;
-                spacing: 8px;
-            }
-            QCheckBox::indicator {
-                width: 18px;
-                height: 18px;
-                border: 2px solid #666;
-                border-radius: 3px;
-                background-color: #fff;
-            }
-            QCheckBox::indicator:checked {
-                background-color: #3498db;
-                border-color: #2980b9;
-                image: url(data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iMTAiIGhlaWdodD0iNyIgdmlld0JveD0iMCAwIDEwIDciIGZpbGw9Im5vbmUiIHhtbG5zPSJodHRwOi8vd3d3LnczLm9yZy8yMDAwL3N2ZyI+CjxwYXRoIGQ9Ik04LjUgMS41TDMuNSA2LjVMMSA0IiBzdHJva2U9IndoaXRlIiBzdHJva2Utd2lkdGg9IjIiIHN0cm9rZS1saW5lY2FwPSJyb3VuZCIgc3Ryb2tlLWxpbmVqb2luPSJyb3VuZCIvPgo8L3N2Zz4K);
-            }
-            QCheckBox::indicator:unchecked {
-                background-color: #f8f9fa;
-                border-color: #666;
-            }
-            QCheckBox::indicator:hover {
-                border-color: #3498db;
-            }
-        """)
-        
-        encoding_row.addWidget(self.encode_checkbox)
-        encoding_row.addWidget(self.keep_original_checkbox)
-        encoding_row.addStretch()
-        
-        # Organization settings row
-        organization_row = QHBoxLayout()
-        
+        self.keep_original_checkbox.setStyleSheet(_chk_style)
+
         self.organize_folders_checkbox = QCheckBox("Organize by platform (YouTube, Instagram, etc.)")
         self.organize_folders_checkbox.setChecked(self.settings.get('organize_by_platform', True))
         self.organize_folders_checkbox.toggled.connect(self.save_settings)
-        self.organize_folders_checkbox.setStyleSheet("""
-            QCheckBox { 
-                color: #333;
-                spacing: 8px;
-            }
-            QCheckBox::indicator {
-                width: 18px;
-                height: 18px;
-                border: 2px solid #666;
-                border-radius: 3px;
-                background-color: #fff;
-            }
-            QCheckBox::indicator:checked {
-                background-color: #3498db;
-                border-color: #2980b9;
-                image: url(data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iMTAiIGhlaWdodD0iNyIgdmlld0JveD0iMCAwIDEwIDciIGZpbGw9Im5vbmUiIHhtbG5zPSJodHRwOi8vd3d3LnczLm9yZy8yMDAwL3N2ZyI+CjxwYXRoIGQ9Ik04LjUgMS41TDMuNSA2LjVMMSA0IiBzdHJva2U9IndoaXRlIiBzdHJva2Utd2lkdGg9IjIiIHN0cm9rZS1saW5lY2FwPSJyb3VuZCIgc3Ryb2tlLWxpbmVqb2luPSJyb3VuZCIvPgo8L3N2Zz4K);
-            }
-            QCheckBox::indicator:unchecked {
-                background-color: #f8f9fa;
-                border-color: #666;
-            }
-            QCheckBox::indicator:hover {
-                border-color: #3498db;
-            }
-        """)
-        
-        # Metadata options dropdown
-        metadata_label = QLabel("Metadata:")
-        metadata_label.setStyleSheet("color: #333; font-weight: 500;")
-        
+        self.organize_folders_checkbox.setStyleSheet(_chk_style)
+
+        self.show_tray_checkbox = QCheckBox("Show in system tray")
+        self.show_tray_checkbox.setChecked(self.settings.get('show_in_tray', True))
+        self.show_tray_checkbox.toggled.connect(self.toggle_tray_visibility)
+        self.show_tray_checkbox.setStyleSheet(_chk_style)
+
+        # Metadata options dropdown (self-contained, no separate label)
         self.metadata_combo = QComboBox()
         self.metadata_combo.addItems([
-            "None", 
-            "Embedded in file", 
-            "Sidecar files"
+            "Metadata: None",
+            "Metadata: Embedded in file",
+            "Metadata: Sidecar files"
         ])
-        
+
         # Map display text to internal values
         self.metadata_options = {
-            "None": "none",
-            "Embedded in file": "embedded", 
-            "Sidecar files": "sidecar"
+            "Metadata: None": "none",
+            "Metadata: Embedded in file": "embedded",
+            "Metadata: Sidecar files": "sidecar"
         }
-        
+
         # Backward compatibility: migrate old save_metadata boolean to new format
         if 'metadata_option' in self.settings:
             metadata_option = self.settings['metadata_option']
         elif 'save_metadata' in self.settings:
-            # Migrate old boolean setting
             metadata_option = "sidecar" if self.settings['save_metadata'] else "none"
-            # Remove old setting
             self.settings.pop('save_metadata', None)
         else:
             metadata_option = "none"
-        
+
         # Set dropdown selection based on current setting
         for i, text in enumerate(self.metadata_combo.itemText(j) for j in range(self.metadata_combo.count())):
             if self.metadata_options[text] == metadata_option:
                 self.metadata_combo.setCurrentIndex(i)
                 break
-        
+
         self.metadata_combo.currentTextChanged.connect(self.save_settings)
-        self.metadata_combo.setStyleSheet("""
-            QComboBox {
-                border: 2px solid #666;
-                border-radius: 5px;
-                padding: 5px 8px;
-                background-color: #fff;
-                color: #333;
-                font-size: 13px;
-                min-width: 120px;
-            }
-            QComboBox:hover {
-                border-color: #3498db;
-            }
-            QComboBox::drop-down {
-                border: none;
-                width: 20px;
-            }
-            QComboBox::down-arrow {
-                width: 12px;
-                height: 8px;
-                border: 2px solid #666;
-                border-bottom: none;
-                border-left: none;
-                transform: rotate(45deg);
-                margin-right: 8px;
-            }
-        """)
-        
-        organization_row.addWidget(self.organize_folders_checkbox)
-        organization_row.addWidget(metadata_label)
-        organization_row.addWidget(self.metadata_combo)
-        organization_row.addStretch()
-        
-        # System tray settings row
-        tray_row = QHBoxLayout()
 
-        self.show_tray_checkbox = QCheckBox("Show in system tray")
-        self.show_tray_checkbox.setChecked(self.settings.get('show_in_tray', True))
-        self.show_tray_checkbox.toggled.connect(self.toggle_tray_visibility)
-        self.show_tray_checkbox.setStyleSheet("""
-            QCheckBox {
-                color: #333;
-                spacing: 8px;
-            }
-            QCheckBox::indicator {
-                width: 18px;
-                height: 18px;
-                border: 2px solid #666;
-                border-radius: 3px;
-                background-color: #fff;
-            }
-            QCheckBox::indicator:checked {
-                background-color: #3498db;
-                border-color: #2980b9;
-                image: url(data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iMTAiIGhlaWdodD0iNyIgdmlld0JveD0iMCAwIDEwIDciIGZpbGw9Im5vbmUiIHhtbG5zPSJodHRwOi8vd3d3LnczLm9yZy8yMDAwL3N2ZyI+CjxwYXRoIGQ9Ik04LjUgMS41TDMuNSA2LjVMMSA0IiBzdHJva2U9IndoaXRlIiBzdHJva2Utd2lkdGg9IjIiIHN0cm9rZS1saW5lY2FwPSJyb3VuZCIgc3Ryb2tlLWxpbmVqb2luPSJyb3VuZCIvPgo8L3N2Zz4K);
-            }
-            QCheckBox::indicator:unchecked {
-                background-color: #f8f9fa;
+        caret_path = os.path.join(self._assets_dir, 'caret-down.svg').replace('\\', '/')
+        self.metadata_combo.setStyleSheet(f"""
+            QComboBox {{
+                background: #3a3a3a;
+                color: #e0e0e0;
+                border: 1px solid #555;
+                border-radius: 6px;
+                padding: 6px 10px;
+                padding-right: 28px;
+                font-size: 12px;
+            }}
+            QComboBox:hover {{
                 border-color: #666;
-            }
-            QCheckBox::indicator:hover {
-                border-color: #3498db;
-            }
+                background: #444;
+            }}
+            QComboBox::drop-down {{
+                border: none;
+                width: 24px;
+                border-top-right-radius: 6px;
+                border-bottom-right-radius: 6px;
+            }}
+            QComboBox::down-arrow {{
+                image: url({caret_path});
+                width: 12px;
+                height: 12px;
+            }}
         """)
 
-        tray_row.addWidget(self.show_tray_checkbox)
-        tray_row.addStretch()
+        # 2-column grid layout
+        grid_layout = QGridLayout()
+        grid_layout.setHorizontalSpacing(16)
+        grid_layout.setVerticalSpacing(8)
+        grid_layout.setColumnStretch(0, 1)
+        grid_layout.setColumnStretch(1, 1)
 
-        # yt-dlp version and update status (single line, no button by default)
-        update_row = QHBoxLayout()
+        # Row 0: Save location | Metadata dropdown
+        grid_layout.addWidget(location_widget, 0, 0)
+        grid_layout.addWidget(self.metadata_combo, 0, 1)
 
+        # Rows 1-2: checkboxes
+        grid_layout.addWidget(self.organize_folders_checkbox, 1, 0)
+        grid_layout.addWidget(self.show_tray_checkbox, 1, 1)
+        grid_layout.addWidget(self.encode_checkbox, 2, 0)
+        grid_layout.addWidget(self.keep_original_checkbox, 2, 1)
+
+        settings_layout.addLayout(grid_layout)
+
+        # Divider above yt-dlp row
+        divider_layout = QHBoxLayout()
+        divider_layout.setContentsMargins(0, 2, 0, 2)
+        divider_widget = QWidget()
+        divider_widget.setFixedHeight(1)
+        divider_widget.setAttribute(Qt.WA_StyledBackground, True)
+        divider_widget.setStyleSheet("background-color: #404040;")
+        divider_layout.addWidget(divider_widget)
+        settings_layout.addLayout(divider_layout)
+
+        # yt-dlp version and update status
         self._ytdlp_current_version = get_ytdlp_version()
         self._ytdlp_latest_version = None  # set after background check
 
         self.ytdlp_version_label = QLabel(f"yt-dlp: {self._ytdlp_current_version}")
-        self.ytdlp_version_label.setStyleSheet("color: #555; font-size: 12px;")
+        self.ytdlp_version_label.setStyleSheet("color: #aaa; font-size: 12px;")
 
         self.ytdlp_status_label = QLabel("checking for updates...")
         self.ytdlp_status_label.setStyleSheet("color: #999; font-size: 12px; font-style: italic;")
 
-        update_row.addWidget(self.ytdlp_version_label)
-        update_row.addWidget(self.ytdlp_status_label)
-        update_row.addStretch()
+        app_version_label = QLabel(f"dlwithit {__version__}")
+        app_version_label.setStyleSheet("color: #aaa; font-size: 12px;")
+        app_version_label.setAlignment(Qt.AlignRight)
 
-        # Assemble settings layout
-        settings_layout.addLayout(encoding_row)
-        settings_layout.addLayout(organization_row)
-        settings_layout.addLayout(tray_row)
-        settings_layout.addLayout(update_row)
+        version_row = QHBoxLayout()
+        version_row.setContentsMargins(0, 0, 0, 0)
+        version_row.setSpacing(6)
+        version_row.addWidget(self.ytdlp_version_label)
+        version_row.addWidget(self.ytdlp_status_label)
+        version_row.addStretch()
+        version_row.addWidget(app_version_label)
+        settings_layout.addLayout(version_row)
 
         settings_widget.setLayout(settings_layout)
-        settings_widget.setStyleSheet("QWidget { background-color: #f0f0f0; border-radius: 5px; }")
+        settings_widget.setStyleSheet("""
+            QWidget#settingsPanel {
+                background: qlineargradient(x1:0, y1:0, x2:0, y2:1,
+                    stop:0 #363636, stop:1 #2e2e2e);
+                border: 1px solid #404040;
+                border-radius: 12px;
+            }
+        """)
 
         parent_layout.addWidget(settings_widget)
-    
-    def _create_adaptive_divider(self):
-        """Create a system-aware adaptive divider that blends with the current theme"""
-        divider = QWidget()
-        divider.setFixedHeight(1)
-        
-        # Get system palette to detect theme using proper roles
-        palette = QApplication.palette()
-        window_color = palette.color(palette.Window)
-        window_text_color = palette.color(palette.WindowText)
-        
-        # Extract RGB values
-        bg_r, bg_g, bg_b = window_color.red(), window_color.green(), window_color.blue()
-        text_r, text_g, text_b = window_text_color.red(), window_text_color.green(), window_text_color.blue()
-        
-        # Calculate luminance of background to determine theme
-        bg_luminance = (0.299 * bg_r + 0.587 * bg_g + 0.114 * bg_b) / 255
-        text_luminance = (0.299 * text_r + 0.587 * text_g + 0.114 * text_b) / 255
-        
-        # Use the contrast between background and text to determine theme
-        is_dark_theme = bg_luminance < text_luminance
-        
-        if is_dark_theme:
-            # Dark theme: make divider 30-40% lighter than background
-            factor = 1.35
-            divider_r = min(255, int(bg_r * factor))
-            divider_g = min(255, int(bg_g * factor))
-            divider_b = min(255, int(bg_b * factor))
-            theme_type = "Dark"
-        else:
-            # Light theme: make divider 20-30% darker than background
-            factor = 0.75
-            divider_r = int(bg_r * factor)
-            divider_g = int(bg_g * factor)
-            divider_b = int(bg_b * factor)
-            theme_type = "Light"
-        
-        divider_color = f"rgb({divider_r}, {divider_g}, {divider_b})"
-        
-        # Debug prints for theme detection verification
-        
-        divider.setStyleSheet(f"""
-            QWidget {{
-                background-color: {divider_color};
-                border: none;
-                margin: 0px;
-            }}
-        """)
-        
-        return divider
     
     def _create_download_queue_section(self, parent_layout):
         """Create the download queue section"""
@@ -457,6 +310,21 @@ class MainWindow(QMainWindow):
         header_label = QLabel("<h2>Download Queue</h2>")
         clear_btn = QPushButton("Clear Completed")
         clear_btn.clicked.connect(self.clear_completed)
+        clear_btn.setStyleSheet("""
+            QPushButton {
+                background: #3a3a3a;
+                color: #aaa;
+                border: 1px solid #505050;
+                padding: 5px 12px;
+                border-radius: 6px;
+                font-size: 12px;
+            }
+            QPushButton:hover {
+                background: #444;
+                color: #ccc;
+                border-color: #606060;
+            }
+        """)
         
         header_layout.addWidget(header_label)
         header_layout.addStretch()
@@ -464,7 +332,50 @@ class MainWindow(QMainWindow):
         
         # Download list
         self.download_list = QListWidget()
-        
+        self.download_list.setSpacing(0)
+        self.download_list.setSelectionMode(QAbstractItemView.NoSelection)
+        self.download_list.setFocusPolicy(Qt.NoFocus)
+        self.download_list.setVerticalScrollBarPolicy(Qt.ScrollBarAsNeeded)
+        self.download_list.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
+        self.download_list.setStyleSheet("""
+            QListWidget {
+                background: transparent;
+                border: none;
+                outline: none;
+            }
+            QListWidget::item {
+                background: transparent;
+                border: none;
+                outline: none;
+            }
+            QListWidget::item:selected {
+                background: transparent;
+                border: none;
+            }
+            QListWidget::item:hover {
+                background: transparent;
+            }
+            QScrollBar:vertical {
+                background: transparent;
+                width: 14px;
+                margin: 0;
+                padding: 0;
+            }
+            QScrollBar::handle:vertical {
+                background: #555;
+                border-radius: 3px;
+                min-height: 30px;
+                margin: 0 4px 0 4px;
+            }
+            QScrollBar::handle:vertical:hover {
+                background: #777;
+            }
+            QScrollBar::add-line:vertical,
+            QScrollBar::sub-line:vertical { height: 0; background: none; }
+            QScrollBar::add-page:vertical,
+            QScrollBar::sub-page:vertical { background: none; }
+        """)
+
         parent_layout.addLayout(header_layout)
         parent_layout.addWidget(self.download_list)
     
@@ -478,7 +389,7 @@ class MainWindow(QMainWindow):
         if self.settings['use_custom_location']:
             path = self.settings['custom_location']
         else:
-            path = str(Path.home() / 'Downloads' / 'Media')
+            path = str(Path.home() / 'Downloads' / 'dlwithit')
         
         # Replace home directory with ~
         home = str(Path.home())
@@ -490,7 +401,7 @@ class MainWindow(QMainWindow):
     def change_save_location(self):
         """Open folder picker dialog"""
         current_path = (self.settings['custom_location'] if self.settings['use_custom_location'] 
-                       else str(Path.home() / 'Downloads' / 'Media'))
+                       else str(Path.home() / 'Downloads' / 'dlwithit'))
         
         folder = QFileDialog.getExistingDirectory(
             self,
@@ -502,15 +413,8 @@ class MainWindow(QMainWindow):
         if folder:
             self.settings['custom_location'] = folder
             self.settings['use_custom_location'] = True
-            self.use_custom_checkbox.setChecked(True)
             self.save_settings()
             self.location_display.setText(self.get_display_path())
-    
-    def toggle_custom_location(self, checked):
-        """Toggle between custom and default location"""
-        self.settings['use_custom_location'] = checked
-        self.save_settings()
-        self.location_display.setText(self.get_display_path())
     
     def save_settings(self):
         """Save current settings to file"""
@@ -611,8 +515,7 @@ class MainWindow(QMainWindow):
         self._ytdlp_latest_version = latest
 
         if current == latest:
-            self.ytdlp_status_label.setText("\u2713 Up to date")
-            self.ytdlp_status_label.setStyleSheet("color: #27ae60; font-size: 12px; font-style: normal;")
+            self.ytdlp_status_label.setText("")
         else:
             # Show clickable "Update available" text
             self.ytdlp_status_label.setText(f"Update available ({latest})")
@@ -669,7 +572,7 @@ class MainWindow(QMainWindow):
         if self.settings['use_custom_location']:
             return self.settings['custom_location']
         else:
-            return str(Path.home() / 'Downloads' / 'Media')
+            return str(Path.home() / 'Downloads' / 'dlwithit')
     
     def add_download(self, data):
         """
@@ -700,25 +603,22 @@ class MainWindow(QMainWindow):
         # Connect cancel button
         item_widget.cancel_btn.clicked.connect(lambda: self.cancel_download(download_id))
         
-        # Create container widget with download item and divider
+        # Create container widget with download item
         container_widget = QWidget()
+        container_widget.setStyleSheet("background: transparent;")
         container_layout = QVBoxLayout()
-        container_layout.setContentsMargins(0, 0, 0, 0)
+        container_layout.setContentsMargins(0, 4, 0, 4)
         container_layout.setSpacing(0)
-        
+
         # Add the download item
         container_layout.addWidget(item_widget)
-        
-        # Add adaptive system-aware divider
-        divider = self._create_adaptive_divider()
-        container_layout.addWidget(divider)
-        
+
         container_widget.setLayout(container_layout)
-        
+
         # Create list item with proper height
         list_item = QListWidgetItem()
         list_item.setSizeHint(container_widget.minimumSizeHint())
-        
+
         # Add to list (insert at top)
         self.download_list.insertItem(0, list_item)
         self.download_list.setItemWidget(list_item, container_widget)
@@ -752,7 +652,7 @@ class MainWindow(QMainWindow):
         
         # Update UI status
         item_widget.status_label.setText("Starting...")
-        item_widget.status_label.setStyleSheet("color: #3498db;")
+        item_widget.status_label.setStyleSheet("color: #5ab0ff;")
         
         # Show system notification
         media_type = data.get('type', 'video').capitalize()
@@ -764,7 +664,7 @@ class MainWindow(QMainWindow):
         )
         
         # Update status label
-        self.status_label.setText(f"Active downloads: {self.count_active()}")
+        self._update_status_footer()
     
     def handle_video_list(self, data):
         """
@@ -795,12 +695,23 @@ class MainWindow(QMainWindow):
                     # Process each selected video
                     for video_info in selected:
                         url = video_info['url']
-                        
-                        # Check if this should use yt-dlp (video type) or direct download (direct-video type)
-                        if (video_info.get('type') == 'hls' or 
+                        video_type = video_info.get('type', 'direct')
+
+                        # Types from the extension that always mean direct file download.
+                        # Includes HTML MIME types (e.g. 'video/mp4' from <source type="...">)
+                        # and extension-defined type strings.
+                        DIRECT_TYPES = {
+                            'direct', 'srcset', 'data-attribute', 'script-json',
+                            'preload', 'mux', 'meta-tag',
+                            'video/mp4', 'video/webm', 'video/quicktime',
+                            'video/x-m4v', 'video/ogg', 'video/x-matroska',
+                        }
+
+                        # Check if this should use yt-dlp (HLS or platform URL)
+                        if (video_type == 'hls' or
                             url.endswith('.m3u8') or
                             'vimeo.com' in url or
-                            'youtube.com' in url or 
+                            'youtube.com' in url or
                             'youtu.be' in url or
                             'instagram.com' in url or
                             'tiktok.com' in url):
@@ -815,10 +726,14 @@ class MainWindow(QMainWindow):
                             }
                             self.add_download(download_data)
                         else:
-                            # Check if it's actually a direct file URL
-                            is_direct_file = (url.endswith(('.mp4', '.webm', '.mov', '.avi', '.mkv', '.m4v')) or
-                                            any(ext in url.lower() for ext in ['.mp4?', '.webm?', '.mov?']))
-                            
+                            # Determine if this is a direct file download.
+                            # Trust the extension's type field first; fall back to URL extension.
+                            is_direct_file = (
+                                video_type in DIRECT_TYPES or
+                                url.endswith(('.mp4', '.webm', '.mov', '.avi', '.mkv', '.m4v')) or
+                                any(ext in url.lower() for ext in ['.mp4?', '.webm?', '.mov?'])
+                            )
+
                             if is_direct_file:
                                 # Direct file - use direct download
                                 download_data = {
@@ -830,7 +745,7 @@ class MainWindow(QMainWindow):
                                 }
                                 self.add_direct_video_download(download_data)
                             else:
-                                # Unknown format - default to yt-dlp to be safe
+                                # Unknown format - use yt-dlp as last resort
                                 download_data = {
                                     'url': url,
                                     'title': video_info.get('title', 'Video'),
@@ -891,15 +806,23 @@ class MainWindow(QMainWindow):
                     # Process each selected video (same logic as handle_video_list)
                     for video_info in selected:
                         url = video_info['url']
-                        
-                        # Check if this should use yt-dlp (video type) or direct download (direct-video type)
-                        if ('vimeo.com' in url or
-                            'youtube.com' in url or 
+                        video_type = video_info.get('type', 'direct')
+
+                        DIRECT_TYPES = {
+                            'direct', 'srcset', 'data-attribute', 'script-json',
+                            'preload', 'mux', 'meta-tag',
+                            'video/mp4', 'video/webm', 'video/quicktime',
+                            'video/x-m4v', 'video/ogg', 'video/x-matroska',
+                        }
+
+                        # Check if this should use yt-dlp (HLS or platform URL)
+                        if (video_type == 'hls' or
+                            url.endswith('.m3u8') or
+                            'vimeo.com' in url or
+                            'youtube.com' in url or
                             'youtu.be' in url or
                             'instagram.com' in url or
-                            'tiktok.com' in url or
-                            video_info.get('type') == 'hls' or 
-                            url.endswith('.m3u8')):
+                            'tiktok.com' in url):
                             # Platform video or HLS stream - use yt-dlp
                             download_data = {
                                 'url': url,
@@ -913,10 +836,12 @@ class MainWindow(QMainWindow):
                             }
                             self.add_download(download_data)
                         else:
-                            # Check if it's actually a direct file URL
-                            is_direct_file = (url.endswith(('.mp4', '.webm', '.mov', '.avi', '.mkv', '.m4v')) or
-                                            any(ext in url.lower() for ext in ['.mp4?', '.webm?', '.mov?']))
-                            
+                            is_direct_file = (
+                                video_type in DIRECT_TYPES or
+                                url.endswith(('.mp4', '.webm', '.mov', '.avi', '.mkv', '.m4v')) or
+                                any(ext in url.lower() for ext in ['.mp4?', '.webm?', '.mov?'])
+                            )
+
                             if is_direct_file:
                                 # Direct file - use direct download
                                 download_data = {
@@ -928,7 +853,7 @@ class MainWindow(QMainWindow):
                                 }
                                 self.add_direct_video_download(download_data)
                             else:
-                                # Unknown format - default to yt-dlp to be safe
+                                # Unknown format - use yt-dlp as last resort
                                 download_data = {
                                     'url': url,
                                     'title': video_info.get('title', 'Video'),
@@ -976,21 +901,18 @@ class MainWindow(QMainWindow):
         # Connect cancel button
         item_widget.cancel_btn.clicked.connect(lambda: self.cancel_download(download_id))
         
-        # Create container widget with download item and divider
+        # Create container widget with download item
         container_widget = QWidget()
+        container_widget.setStyleSheet("background: transparent;")
         container_layout = QVBoxLayout()
-        container_layout.setContentsMargins(0, 0, 0, 0)
+        container_layout.setContentsMargins(0, 4, 0, 4)
         container_layout.setSpacing(0)
-        
+
         # Add the download item
         container_layout.addWidget(item_widget)
-        
-        # Add adaptive system-aware divider
-        divider = self._create_adaptive_divider()
-        container_layout.addWidget(divider)
-        
+
         container_widget.setLayout(container_layout)
-        
+
         # Create and add list item
         list_item = QListWidgetItem()
         list_item.setSizeHint(container_widget.minimumSizeHint())
@@ -1023,9 +945,9 @@ class MainWindow(QMainWindow):
         
         # Update UI status
         item_widget.status_label.setText("Starting...")
-        item_widget.status_label.setStyleSheet("color: #3498db;")
+        item_widget.status_label.setStyleSheet("color: #5ab0ff;")
         
-        self.status_label.setText(f"Active downloads: {self.count_active()}")
+        self._update_status_footer()
     
     def cancel_download(self, download_id):
         """Cancel a download or encoding job"""
@@ -1034,7 +956,7 @@ class MainWindow(QMainWindow):
         if download_id in self.download_items:
             widget = self.download_items[download_id]['widget']
             widget.status_label.setText("Cancelling...")
-            widget.status_label.setStyleSheet("color: #e74c3c;")
+            widget.status_label.setStyleSheet("color: #f87171;")
             widget.cancel_btn.setEnabled(False)
     
     def update_progress(self, download_id, percent, status):
@@ -1056,17 +978,18 @@ class MainWindow(QMainWindow):
             elif status == 'downloading':
                 widget.set_downloading()
                 widget.status_label.setText("Downloading...")
-                widget.status_label.setStyleSheet("color: #3498db;")
+                widget.status_label.setStyleSheet("color: #5ab0ff;")
             elif status == 'merging':
-                widget.status_label.setText("Merging audio & video...")
+                widget.status_label.setText("Merging...")
                 widget.status_label.setStyleSheet("color: #16a085;")  # Teal color
                 widget.progress_bar.setValue(100)  # Show as complete since we can't track merge progress
             elif status == 'encoding':
+                widget.set_encoding()
                 widget.status_label.setText("Encoding to H.264...")
                 widget.status_label.setStyleSheet("color: #9b59b6;")
                 widget.progress_bar.setValue(0)  # Reset for encoding progress
             elif status.startswith('embedding'):
-                widget.status_label.setText("Embedding metadata...")
+                widget.status_label.setText("Embedding...")
                 widget.status_label.setStyleSheet("color: #16a085;")
     
     def download_finished(self, download_id, path):
@@ -1079,22 +1002,16 @@ class MainWindow(QMainWindow):
             if "|MULTI|" in path:
                 actual_path, _, file_count = path.partition("|MULTI|")
                 widget.status_label.setText(f"Complete - {file_count}")
-                widget.status_label.setStyleSheet("color: #27ae60;")
-                
-                # Create folder reveal button
+                widget.status_label.setStyleSheet("color: #4ade80;")
+
                 folder_path = os.path.dirname(actual_path)
-                reveal_btn = self._create_reveal_button("Show Folder", 
-                                                       lambda: self.reveal_in_finder(folder_path, is_folder=True))
+                widget.set_reveal(folder_path, is_folder=True)
             else:
                 widget.status_label.setText("Complete")
-                widget.status_label.setStyleSheet("color: #27ae60;")
-                
-                # Create file reveal button
-                reveal_btn = self._create_reveal_button("Show in Finder", 
-                                                       lambda: self.reveal_in_finder(path))
-            
-            # Add reveal button to widget
-            widget.layout().addWidget(reveal_btn)
+                widget.status_label.setStyleSheet("color: #4ade80;")
+
+                widget.set_reveal(path, is_folder=False)
+
             widget.set_complete()
             
             # Show completion notification
@@ -1105,52 +1022,25 @@ class MainWindow(QMainWindow):
                 2000
             )
         
-        self.status_label.setText(f"Active downloads: {self.count_active()}")
+        self._update_status_footer()
     
-    def _create_reveal_button(self, text, callback):
-        """Create a styled reveal button"""
-        reveal_btn = QPushButton(text)
-        reveal_btn.setStyleSheet("""
-            QPushButton {
-                background: #3498db;
-                color: white;
-                border: none;
-                padding: 4px 8px;
-                border-radius: 3px;
-                font-size: 11px;
-            }
-            QPushButton:hover {
-                background: #2980b9;
-            }
-        """)
-        reveal_btn.clicked.connect(callback)
-        return reveal_btn
-    
-    def reveal_in_finder(self, path, is_folder=False):
-        """
-        Open file location in system file manager.
-        
-        Args:
-            path: File or folder path to reveal
-            is_folder: Whether the path is a folder (affects behavior on some platforms)
-        """
-        try:
-            if sys.platform == "darwin":  # macOS
-                if is_folder:
-                    subprocess.run(["open", path])
-                else:
-                    subprocess.run(["open", "-R", path])
-            elif sys.platform == "win32":  # Windows
-                if is_folder:
-                    subprocess.run(["explorer", path])
-                else:
-                    subprocess.run(["explorer", "/select,", path])
-            else:  # Linux
-                target_path = path if is_folder else os.path.dirname(path)
-                subprocess.run(["xdg-open", target_path])
-        except Exception as e:
-            print(f"Error revealing file: {e}")
-    
+    def _extract_short_error(self, raw_error):
+        """Extract a concise one-line error summary from yt-dlp/requests output."""
+        import re
+        clean = re.sub(r'\x1b\[[0-9;]*m', '', raw_error)  # strip ANSI codes
+        # yt-dlp errors always contain an 'ERROR: ...' line — extract just that
+        for line in clean.splitlines():
+            line = line.strip()
+            if line.startswith('ERROR:'):
+                msg = line[6:].strip()
+                msg = re.sub(r'^\[[^\]]+\]\s*', '', msg)   # strip [extractor] prefix
+                msg = re.sub(r'https?://\S+', 'URL', msg)  # shorten URLs
+                return msg[:55] + '\u2026' if len(msg) > 55 else msg
+        # Fallback: collapse whitespace, strip verbose exception prefixes
+        clean = ' '.join(clean.split())
+        clean = re.sub(r'(Exception Type|Error Message|Traceback)[^:]*:\s*', '', clean)
+        return clean[:55] + '\u2026' if len(clean) > 55 else clean
+
     def download_failed(self, download_id, error):
         """Handle download failure"""
         # Bring window to front so user sees the error
@@ -1159,17 +1049,10 @@ class MainWindow(QMainWindow):
         if download_id in self.download_items:
             widget = self.download_items[download_id]['widget']
             widget.progress_bar.setValue(0)
-            
-            # Clean error for single-line display: strip ANSI codes and collapse whitespace
-            import re
-            clean = re.sub(r'\x1b\[[0-9;]*m', '', error)  # strip ANSI color codes
-            clean = ' '.join(clean.split())  # collapse newlines/whitespace to single spaces
-            short_error = clean[:60] + "..." if len(clean) > 60 else clean
-            
-            # Use the new set_error method to store full error details
+            short_error = self._extract_short_error(error)
             widget.set_error(short_error, error)
-        
-        self.status_label.setText(f"Active downloads: {self.count_active()}")
+
+        self._update_status_footer()
     
     def download_cancelled(self, download_id):
         """Handle download cancellation"""
@@ -1177,7 +1060,7 @@ class MainWindow(QMainWindow):
             widget = self.download_items[download_id]['widget']
             widget.progress_bar.setValue(0)
             widget.status_label.setText("Cancelled")
-            widget.status_label.setStyleSheet("color: #6c757d;")
+            widget.status_label.setStyleSheet("color: #888;")
             widget.cancel_btn.setEnabled(False)
 
             # Show cancellation notification
@@ -1188,7 +1071,7 @@ class MainWindow(QMainWindow):
                 2000
             )
 
-        self.status_label.setText(f"Active downloads: {self.count_active()}")
+        self._update_status_footer()
 
     def download_skipped_handler(self, download_id, reason, filepath):
         """Handle skipped download (file already exists)"""
@@ -1196,14 +1079,11 @@ class MainWindow(QMainWindow):
         if download_id in self.download_items:
             widget = self.download_items[download_id]['widget']
             widget.progress_bar.setValue(100)
-            widget.status_label.setText(f"Skipped - {reason}")
-            widget.status_label.setStyleSheet("color: #f39c12;")  # Orange/amber color
-            widget.cancel_btn.setEnabled(False)
-
-            # Add reveal button to show existing file
-            reveal_btn = self._create_reveal_button("Show in Finder",
-                                                   lambda: self.reveal_in_finder(filepath))
-            widget.layout().addWidget(reveal_btn)
+            widget.status_label.setAlignment(Qt.AlignLeft | Qt.AlignVCenter)
+            widget.status_label.setText("Skipped: File exists")
+            widget.status_label.setStyleSheet("color: #fbbf24;")
+            widget.cancel_btn.hide()
+            widget.set_reveal(filepath)
 
         # Show notification (always, even if item not found in UI)
         self.tray_icon.showMessage(
@@ -1213,7 +1093,7 @@ class MainWindow(QMainWindow):
             2000
         )
 
-        self.status_label.setText(f"Active downloads: {self.count_active()}")
+        self._update_status_footer()
 
     def queue_encoding_job(self, download_id, filepath, keep_original, metadata_info):
         """Queue an encoding job for the encoding worker"""
@@ -1229,6 +1109,7 @@ class MainWindow(QMainWindow):
         """Handle encoding started"""
         if download_id in self.download_items:
             widget = self.download_items[download_id]['widget']
+            widget.set_encoding()
             widget.status_label.setText("Encoding to H.264...")
             widget.status_label.setStyleSheet("color: #9b59b6;")
             widget.progress_bar.setValue(0)
@@ -1253,10 +1134,10 @@ class MainWindow(QMainWindow):
         if download_id in self.download_items:
             widget = self.download_items[download_id]['widget']
             widget.progress_bar.setValue(0)
-            short_error = f"Encoding failed: {error[:30]}..." if len(error) > 30 else f"Encoding failed: {error}"
+            short_error = f"Encoding: {self._extract_short_error(error)}"
             widget.set_error(short_error, f"Encoding Error: {error}")
 
-        self.status_label.setText(f"Active downloads: {self.count_active()}")
+        self._update_status_footer()
 
     def encoding_cancelled_handler(self, download_id):
         """Handle encoding cancellation"""
@@ -1264,10 +1145,10 @@ class MainWindow(QMainWindow):
             widget = self.download_items[download_id]['widget']
             widget.progress_bar.setValue(0)
             widget.status_label.setText("Encoding Cancelled")
-            widget.status_label.setStyleSheet("color: #6c757d;")
+            widget.status_label.setStyleSheet("color: #888;")
             widget.cancel_btn.setEnabled(False)
 
-        self.status_label.setText(f"Active downloads: {self.count_active()}")
+        self._update_status_footer()
 
     def clear_completed(self):
         """Clear completed, failed, skipped, and cancelled downloads from the list"""
@@ -1301,7 +1182,14 @@ class MainWindow(QMainWindow):
                     status.startswith("Encoding Cancelled") or status.startswith("Encoding failed")):
                 count += 1
         return count
-    
+
+    def _update_status_footer(self):
+        """Update the footer labels with current active and queued counts."""
+        active = self.count_active()
+        queued = self.download_queue.qsize()
+        self.status_label.setText(f"Active downloads: {active}")
+        self.queue_label.setText(f"{queued} in queue" if queued else "")
+
     def restore_window_geometry(self):
         """Restore window position and size from settings with multi-monitor support"""
         geometry = self.settings.get('window_geometry', {})
@@ -1310,7 +1198,7 @@ class MainWindow(QMainWindow):
         desktop = QApplication.desktop()
         
         # Set window size
-        width = geometry.get('width', 500)
+        width = geometry.get('width', 580)
         height = geometry.get('height', 600)
         
         # Ensure minimum and maximum sizes (use virtual desktop for multi-monitor)
