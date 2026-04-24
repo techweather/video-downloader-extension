@@ -4,12 +4,12 @@
 chrome.runtime.onInstalled.addListener(() => {
   chrome.contextMenus.create({
     id: "pick-images",
-    title: "🖼️  Image Picker (ESC to stop)",
+    title: "🏞️  Image Picker (ESC to stop)",
     contexts: ["all"]
   });
   chrome.contextMenus.create({
     id: "download-video",
-    title: "🎬  Video Download (this page)",
+    title: "▶️  Video Download",
     contexts: ["all"]
   });
 });
