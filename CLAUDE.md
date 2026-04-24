@@ -43,16 +43,17 @@ This file is for Claude Code. It contains working preferences and session nudges
 
 Ordered — work top to bottom unless I say otherwise:
 
-1. **Set up automated extension testing** — use Claude in Chrome MCP to navigate test pages and trigger the Chrome extension via keyboard shortcuts (Cmd+Ctrl+1/2), verifying downloads land in the app queue. Should cover: YouTube, Vimeo embed, direct MP4, image picker. Requires dev app running on port 5555 and extension loaded unpacked. Build this before new features so regressions are caught automatically.
-2. ~~Build Chrome extension~~ — done (`extension_chrome/`, `chrome-extension` branch merged)
-3. ~~Finalize icon revision and complete features branch merge~~ — done (emoji labels, branches merged to main)
-4. Sign up for Apple Developer account + sign and notarize the app — account exists, payment/enrollment pending
-5. Fix stuck 'Starting…' hang — cancel button should always be available
-6. Fix duplicate naming on YouTube Shorts when logged out
-7. Make app auto-launch when extension is invoked and app isn't running
-8. Verify yt-dlp version check is working
-9. Prepare README screenshots
-10. README: add function key note (Cmd+Ctrl+1/2 for Chrome, Cmd+F1/F2 for Firefox)
+1. **Fix dev Python environment** — Mac Studio has Python 3.9 as default; yt-dlp 2026.x requires 3.10+. Install Python 3.12 via Homebrew, recreate `.venv` with it, reinstall requirements. This is a prerequisite for meaningful full-stack testing — without it, all YouTube/Vimeo downloads fail in dev regardless of whether the code is correct.
+2. **Set up automated extension testing** — use Claude in Chrome MCP to navigate test pages and trigger the Chrome extension via keyboard shortcuts (Cmd+Ctrl+1/2), verifying downloads land in the app queue. Should cover: YouTube, Vimeo embed, direct MP4, image picker. Tests both the extension pipeline AND the app's download behavior. Requires dev app running on port 5555 and extension loaded unpacked.
+3. ~~Build Chrome extension~~ — done (`extension_chrome/`, `chrome-extension` branch merged)
+4. ~~Finalize icon revision and complete features branch merge~~ — done (emoji labels, branches merged to main)
+5. Sign up for Apple Developer account + sign and notarize the app — account exists, payment/enrollment pending
+6. Fix stuck 'Starting…' hang — cancel button should always be available
+7. Fix duplicate naming on YouTube Shorts when logged out
+8. Make app auto-launch when extension is invoked and app isn't running
+9. Verify yt-dlp version check is working
+10. Prepare README screenshots
+11. README: add function key note (Cmd+Ctrl+1/2 for Chrome, Cmd+F1/F2 for Firefox)
 
 ---
 
