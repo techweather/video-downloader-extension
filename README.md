@@ -2,21 +2,20 @@
 
 A browser extension + desktop app for downloading images and videos from the web.
 
-**macOS** &nbsp;|&nbsp; **Firefox**
+**macOS** &nbsp;|&nbsp; **Firefox** &nbsp;|&nbsp; **Chrome**
 
 ---
 
 ## What it does
 
-dlwithit is a two-part tool: a Firefox extension that detects media on any webpage, and a native macOS app that handles the actual downloading. Right-click on any page to pick images, grab videos from platforms like YouTube and Vimeo, or extract embedded video files that browsers can't normally save.
+dlwithit is a two-part tool: a browser extension (Firefox and Chrome) that detects media on any webpage, and a native macOS app that handles the actual downloading. Right-click on any page to pick images, grab videos from platforms like YouTube and Vimeo, or extract embedded video files that browsers can't normally save.
 
 Built for designers, filmmakers, and creatives who need to quickly gather visual references. The app queues downloads with progress tracking, auto-encodes VP9 to H.264, and can embed source URLs as metadata so you always know where something came from.
 
 ## Features
 
 - **Pick Images** — visual overlay to select and download images from any page
-- **Download Media** — uses yt-dlp to download from YouTube, Vimeo, Instagram, TikTok, and hundreds more
-- **Extract Direct Videos** — finds video files embedded in pages (Mux, Squarespace, HLS streams, etc.)
+- **Download Media** — uses yt-dlp to download from YouTube, Vimeo, Instagram, TikTok, and hundreds more; also scans pages for embedded video files (Mux, Squarespace, HLS streams, etc.)
 - **Metadata embedding** — saves the source URL inside downloaded files
 - **VP9 to H.264 encoding** — auto-converts WebM/VP9 downloads with parallel encoding
 - **Playlist support** — detects playlists and lets you pick which videos to download
@@ -29,7 +28,7 @@ Built for designers, filmmakers, and creatives who need to quickly gather visual
 | Component | Supported | Planned |
 |-----------|-----------|---------|
 | Desktop app | macOS | Windows |
-| Browser extension | Firefox | Chrome |
+| Browser extension | Firefox, Chrome | — |
 
 ## Installation
 
@@ -53,27 +52,36 @@ Built for designers, filmmakers, and creatives who need to quickly gather visual
 
 For permanent installation, see [Firefox_Extension_Installation.md](Firefox_Extension_Installation.md).
 
+### Chrome extension
+
+1. Open Chrome and go to `chrome://extensions`
+2. Enable **Developer mode** (top-right toggle)
+3. Click **Load unpacked**
+4. Select the `extension_chrome/` folder
+
 ## Usage
 
-Right-click on any webpage to see three options:
+Right-click on any webpage to see two options:
 
 | Menu item | What it does |
 |-----------|-------------|
-| Pick Images | Opens a visual selector — click images to download them |
-| Download Media | Downloads the current page URL via yt-dlp (YouTube, Vimeo, etc.) |
-| Extract Direct Videos | Scans the page source for embedded video files |
+| 🏞️ Image Picker | Opens a visual selector — click images to download them |
+| ▶️ Video Download | Downloads via yt-dlp (YouTube, Vimeo, etc.) and scans for embedded video files (Mux, HLS, etc.) |
 
 Downloads appear in the app's queue with progress bars, thumbnails, and status updates. Completed downloads have a "Show in Finder" button.
 
 ## Keyboard Shortcuts
 
-| Shortcut | Action |
-|----------|--------|
-| `Cmd+F1` | Pick Images |
-| `Cmd+F2` | Download Media |
-| `Cmd+F3` | Extract Direct Videos |
+| Shortcut | Browser | Action |
+|----------|---------|--------|
+| `Cmd+F1` | Firefox | 🏞️ Image Picker |
+| `Cmd+F2` | Firefox | ▶️ Video Download |
+| `Cmd+Ctrl+1` | Chrome | 🏞️ Image Picker |
+| `Cmd+Ctrl+2` | Chrome | ▶️ Video Download |
 
-These can be customized in Firefox's extension shortcut settings (`about:addons` → gear icon → Manage Extension Shortcuts).
+These can be customized in your browser's extension shortcut settings:
+- **Firefox**: `about:addons` → gear icon → Manage Extension Shortcuts
+- **Chrome**: `chrome://extensions/shortcuts`
 
 ## Settings
 
@@ -96,7 +104,7 @@ Some CDNs reject requests with unexpected headers. dlwithit uses a minimal-heade
 Make sure the app is running (check for the tray icon). The extension communicates via HTTP to `localhost:5555`.
 
 **Videos not detected on a page**
-Try "Extract Direct Videos" — it runs a deep scan of the page source looking for video URLs in scripts, data attributes, and metadata. Some sites load video URLs dynamically after interaction, which may not be detectable.
+▶️ Video Download automatically scans the page source for embedded video URLs in scripts, data attributes, and metadata. Some sites load video URLs dynamically after interaction, which may not be detectable.
 
 ## Built With
 
