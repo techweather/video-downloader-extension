@@ -43,17 +43,18 @@ This file is for Claude Code. It contains working preferences and session nudges
 
 Ordered — work top to bottom unless I say otherwise:
 
-1. **Fix dev Python environment** — Mac Studio has Python 3.9 as default; yt-dlp 2026.x requires 3.10+. Install Python 3.12 via Homebrew, recreate `.venv` with it, reinstall requirements. This is a prerequisite for meaningful full-stack testing — without it, all YouTube/Vimeo downloads fail in dev regardless of whether the code is correct.
-2. **Set up automated extension testing** — use Claude in Chrome MCP to navigate test pages and trigger the Chrome extension via keyboard shortcuts (Cmd+Ctrl+1/2), verifying downloads land in the app queue. Should cover: YouTube, Vimeo embed, direct MP4, image picker. Tests both the extension pipeline AND the app's download behavior. Requires dev app running on port 5555 and extension loaded unpacked.
+1. ~~**Fix dev Python environment**~~ — done. Python 3.12.13 via Homebrew, `.venv` rebuilt, yt-dlp 2026.03.17 confirmed. Dev app runs on port 5555.
+2. ~~**Set up automated extension testing**~~ — done. Pytest suite (Tier 1) covers classify, payload routing, encoder logic. See `tests/` and the Testing section below.
 3. ~~Build Chrome extension~~ — done (`extension_chrome/`, `chrome-extension` branch merged)
 4. ~~Finalize icon revision and complete features branch merge~~ — done (emoji labels, branches merged to main)
 5. Sign up for Apple Developer account + sign and notarize the app — account exists, payment/enrollment pending
-6. Fix stuck 'Starting…' hang — cancel button should always be available
-7. Fix duplicate naming on YouTube Shorts when logged out
-8. Make app auto-launch when extension is invoked and app isn't running
-9. Verify yt-dlp version check is working
+6. ~~Fix stuck 'Starting…' hang~~ — done. Cancel button now shows immediately when queued.
+7. ~~Fix duplicate naming on YouTube Shorts when logged out~~ — cancelled, non-issue.
+8. ~~Make app auto-launch when extension is invoked and app isn't running~~ — code done (`dlwithit://` URL scheme + extension retry logic). **⚠️ Needs post-bundle test:** quit the app, invoke extension, confirm it auto-launches. Untestable with dev Python app — requires a rebuilt `.app` bundle.
+9. ~~Verify yt-dlp version check is working~~ — done. GitHub API fetches correctly, version comparison works, label refreshes after update. Memory bug note was stale (fix was already in code).
 10. Prepare README screenshots
 11. README: add function key note (Cmd+Ctrl+1/2 for Chrome, Cmd+F1/F2 for Firefox)
+12. **Tier 2 smoke test** — build a short, focused manual checklist around a fixed tab set (Instagram carousels, Vimeo-heavy portfolio sites, Mux embeds) to replace the existing exhaustive TESTING_CHECKLIST.md. Discussed April 2026.
 
 ---
 
@@ -67,6 +68,38 @@ Before this goes to a wider group of people, these must be true:
 - [ ] No hangs that block further downloads
 - [ ] README is clear enough for a non-technical friend to install and use it
 - [ ] yt-dlp updater is verified working
+
+---
+
+## Testing
+
+### Tier 1 — fast pytest suite (run this after any bug fix or feature change)
+
+```bash
+cd /Users/seanstarkweather/01_Projects/dlwithit
+.venv/bin/pytest tests/test_api.py tests/test_classify.py tests/test_download_payload.py tests/test_encoder_logic.py -v
+```
+
+Runs in ~2 seconds, no downloads, no browser, no app running needed.
+
+| File | What it covers |
+|---|---|
+| `tests/test_api.py` | Flask endpoints: health, root, download routing, CORS |
+| `tests/test_classify.py` | `/classify` with real URL patterns — YouTube, Vimeo, Instagram, TikTok, direct MP4, edge cases |
+| `tests/test_download_payload.py` | All payload shapes the extension sends; crash prevention (missing `type` field); signal routing |
+| `tests/test_encoder_logic.py` | Image magic-byte detection (JPEG/PNG/WebP/GIF); codec → encode decision (VP9/AV1/H264) |
+
+### Tier 2 — manual smoke test (not yet built)
+
+Planned: a short checklist using a fixed tab set of hard cases — Instagram carousels, Vimeo-heavy portfolio pages, Mux embeds. Replaces the existing exhaustive `TESTING_CHECKLIST.md`. See Obsidian `01_Projects/dlwithit/Test Setup` for full context.
+
+### Dev environment notes
+
+- Python 3.12.13 at `/opt/homebrew/bin/python3.12`
+- `.venv` lives in repo root — always use `.venv/bin/python3.12` or `.venv/bin/pytest`, not system Python
+- Dev app: `cd /Users/seanstarkweather/01_Projects/dlwithit && .venv/bin/python3.12 native_app.py`
+- App runs on port 5555; test suite uses ports 5556–5560 to avoid conflicts
+- yt-dlp note: YouTube downloads warn about missing JS runtime (deno). Downloads still work; install `brew install deno` when needed for full format support.
 
 ---
 
