@@ -52,8 +52,8 @@ Ordered — work top to bottom unless I say otherwise:
 7. ~~Fix duplicate naming on YouTube Shorts when logged out~~ — cancelled, non-issue.
 8. ~~Make app auto-launch when extension is invoked and app isn't running~~ — code done (`dlwithit://` URL scheme + extension retry logic). **⚠️ Needs post-bundle test:** quit the app, invoke extension, confirm it auto-launches. Untestable with dev Python app — requires a rebuilt `.app` bundle.
 9. ~~Verify yt-dlp version check is working~~ — done. GitHub API fetches correctly, version comparison works, label refreshes after update. Memory bug note was stale (fix was already in code).
-10. Prepare README screenshots
-11. README: add function key note (Cmd+Ctrl+1/2 for Chrome, Cmd+F1/F2 for Firefox)
+10. ~~Prepare README screenshots~~ — placeholder structure added to both README.md and README.html. **⚠️ Waiting on assets:** Sean needs to capture a short demo screen recording (`assets/screenshots/demo.mp4`) and 1–2 stills (`assets/screenshots/app-window.png`, `context-menu.png`). Uncomment the placeholder blocks in both files when ready.
+11. ~~README: add function key note~~ — done. Keyboard shortcut tables updated in both README.md and README.html with Firefox (Cmd+F1/F2), Chrome (Cmd+Ctrl+1/2), and Fn key callout.
 12. **Tier 2 smoke test** — build a short, focused manual checklist around a fixed tab set (Instagram carousels, Vimeo-heavy portfolio sites, Mux embeds) to replace the existing exhaustive TESTING_CHECKLIST.md. Discussed April 2026.
 
 ---
@@ -63,9 +63,9 @@ Ordered — work top to bottom unless I say otherwise:
 Before this goes to a wider group of people, these must be true:
 
 - [ ] App is signed and notarized (no Gatekeeper warnings)
-- [ ] Chrome extension works
-- [ ] Features branch is merged and tested
-- [ ] No hangs that block further downloads
+- [x] Chrome extension works
+- [x] Features branch is merged and tested
+- [x] No hangs that block further downloads
 - [ ] README is clear enough for a non-technical friend to install and use it
 - [ ] yt-dlp updater is verified working
 
@@ -100,6 +100,32 @@ Planned: a short checklist using a fixed tab set of hard cases — Instagram car
 - Dev app: `cd /Users/seanstarkweather/01_Projects/dlwithit && .venv/bin/python3.12 native_app.py`
 - App runs on port 5555; test suite uses ports 5556–5560 to avoid conflicts
 - yt-dlp note: YouTube downloads warn about missing JS runtime (deno). Downloads still work; install `brew install deno` when needed for full format support.
+
+---
+
+## README conventions
+
+There are two READMEs — keep them in sync whenever one changes:
+
+| File | Purpose | Audience |
+|---|---|---|
+| `README.md` | GitHub repo page | Developers / curious visitors |
+| `README.html` | Ships inside the .dmg, opens in browser | End users after install |
+
+**What stays in sync:** feature names and descriptions, keyboard shortcuts, troubleshooting content, Chrome/Firefox parity.
+
+**What intentionally differs:** `README.md` includes source-install instructions (clone, pip, `python native_app.py`). `README.html` includes end-user install steps (drag to Applications, .xpi install, Gatekeeper workaround).
+
+**`README.txt` was deleted** — it was redundant with `README.html`.
+
+**⚠️ Media assets still needed:** placeholder blocks are commented out in both files. Drop files into `assets/screenshots/` and uncomment when ready:
+- `demo.mp4` — short screen recording showing the full workflow
+- `app-window.png` — app window with a download in progress
+- `context-menu.png` — right-click context menu on a real page
+
+`README.html` uses a `<video>` tag; `README.md` uses `![](path)` which GitHub renders as an inline player.
+
+**⚠️ After notarization:** the Gatekeeper troubleshooting items in `README.html` ("app can't be opened", "right-click → Open", System Settings workaround) can be removed or simplified — they only exist because the app isn't signed yet.
 
 ---
 
