@@ -149,6 +149,25 @@
   .trouble p { font-size: 14px; color: var(--muted); margin: 3px 0 0; }
 
   .muted { font-size: 14px; color: var(--muted); margin-top: 10px; }
+
+  /* Media placeholders */
+  .media-placeholder {
+    background: var(--code-bg);
+    border: 2px dashed var(--border);
+    border-radius: 10px;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+    color: var(--muted);
+    font-size: 13px;
+    padding: 24px;
+  }
+  .media-placeholder .icon { font-size: 28px; line-height: 1; }
+  .media-placeholder strong { font-size: 14px; color: var(--text); }
+  .media-placeholder span { font-size: 12px; font-family: "SF Mono", monospace; opacity: 0.6; }
+  .media-row { display: flex; gap: 12px; }
 </style>
 </head>
 <body>
@@ -160,18 +179,32 @@
     <p>Download images and videos from the web — macOS menu bar app + Firefox &amp; Chrome extension</p>
   </header>
 
-  <!-- MEDIA: uncomment and update src paths when assets are ready -->
-  <!--
-  <section>
-    <video controls width="100%" style="border-radius:8px; display:block;">
-      <source src="demo.mp4" type="video/mp4">
-    </video>
+  <!-- MEDIA: replace placeholders below with real assets when ready -->
+  <!-- Video: <video controls width="100%" style="border-radius:8px; display:block;"><source src="demo.mp4" type="video/mp4"></video> -->
+  <!-- Screenshots: <img src="screenshots/app-window.png" ...> and <img src="screenshots/context-menu.png" ...> -->
+
+  <section style="padding: 20px 28px;">
+    <div class="media-placeholder" style="aspect-ratio: 16/9;">
+      <div class="icon">▶️</div>
+      <strong>Demo video</strong>
+      <span>assets/screenshots/demo.mp4</span>
+    </div>
   </section>
-  <section style="display:flex; gap:12px;">
-    <img src="screenshots/app-window.png" alt="dlwithit app window" style="width:50%; border-radius:8px;">
-    <img src="screenshots/context-menu.png" alt="Context menu" style="width:50%; border-radius:8px;">
+
+  <section style="padding: 20px 28px;">
+    <div class="media-row">
+      <div class="media-placeholder" style="flex:1; min-height: 160px;">
+        <div class="icon">🖥️</div>
+        <strong>App window</strong>
+        <span>screenshots/app-window.png</span>
+      </div>
+      <div class="media-placeholder" style="flex:1; min-height: 160px;">
+        <div class="icon">🖱️</div>
+        <strong>Context menu</strong>
+        <span>screenshots/context-menu.png</span>
+      </div>
+    </div>
   </section>
-  -->
 
   <!-- What it does -->
   <section>
