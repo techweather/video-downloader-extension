@@ -12,10 +12,21 @@ dlwithit is a two-part tool: a browser extension (Firefox and Chrome) that detec
 
 Built for designers, filmmakers, and creatives who need to quickly gather visual references. The app queues downloads with progress tracking, auto-encodes VP9 to H.264, and can embed source URLs as metadata so you always know where something came from.
 
+---
+
+<!-- DEMO VIDEO: replace the line below with ![Demo](assets/screenshots/demo.mp4) or a GitHub CDN URL once recorded -->
+<!-- ![Demo](assets/screenshots/demo.mp4) -->
+
+<!-- SCREENSHOTS: one or two stills showing the app window and context menu in use -->
+<!-- ![App window](assets/screenshots/app-window.png) -->
+<!-- ![Context menu](assets/screenshots/context-menu.png) -->
+
+---
+
 ## Features
 
 - **Pick Images** — visual overlay to select and download images from any page
-- **Download Media** — uses yt-dlp to download from YouTube, Vimeo, Instagram, TikTok, and hundreds more; also scans pages for embedded video files (Mux, Squarespace, HLS streams, etc.)
+- **▶️ Video Download** — uses yt-dlp to download from YouTube, Vimeo, Instagram, TikTok, and hundreds more; also scans pages for embedded video files (Mux, Squarespace, HLS streams, etc.)
 - **Metadata embedding** — saves the source URL inside downloaded files
 - **VP9 to H.264 encoding** — auto-converts WebM/VP9 downloads with parallel encoding
 - **Playlist support** — detects playlists and lets you pick which videos to download
@@ -83,6 +94,8 @@ These can be customized in your browser's extension shortcut settings:
 - **Firefox**: `about:addons` → gear icon → Manage Extension Shortcuts
 - **Chrome**: `chrome://extensions/shortcuts`
 
+> **Note for Firefox users:** On Macs where function keys control hardware features (brightness, volume, etc.), you may need to hold `Fn` as well — e.g. `Fn+Cmd+F1`. This depends on your keyboard settings in System Settings → Keyboard.
+
 ## Settings
 
 - **Save location** — default `~/Downloads/dlwithit`, or set a custom folder
@@ -104,7 +117,7 @@ Some CDNs reject requests with unexpected headers. dlwithit uses a minimal-heade
 Make sure the app is running (check for the tray icon). The extension communicates via HTTP to `localhost:5555`.
 
 **Videos not detected on a page**
-▶️ Video Download automatically scans the page source for embedded video URLs in scripts, data attributes, and metadata. Some sites load video URLs dynamically after interaction, which may not be detectable.
+▶️ Video Download scans the page source for embedded video URLs in scripts, data attributes, and metadata. Some sites lazy-load video — if nothing is detected, scroll to the video and let it start playing for a few seconds, then invoke ▶️ Video Download again. If the video still doesn't appear, the URL may be loaded dynamically after user interaction and may not be capturable.
 
 ## Built With
 
