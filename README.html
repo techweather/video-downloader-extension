@@ -157,13 +157,26 @@
   <header>
     <h1>dlwithit</h1>
     <p class="tagline">Built for designers, filmmakers, and creatives who need to quickly gather visual references.</p>
-    <p>Download images and videos from the web — macOS menu bar app + Firefox extension</p>
+    <p>Download images and videos from the web — macOS menu bar app + Firefox &amp; Chrome extension</p>
   </header>
+
+  <!-- MEDIA: uncomment and update src paths when assets are ready -->
+  <!--
+  <section>
+    <video controls width="100%" style="border-radius:8px; display:block;">
+      <source src="demo.mp4" type="video/mp4">
+    </video>
+  </section>
+  <section style="display:flex; gap:12px;">
+    <img src="screenshots/app-window.png" alt="dlwithit app window" style="width:50%; border-radius:8px;">
+    <img src="screenshots/context-menu.png" alt="Context menu" style="width:50%; border-radius:8px;">
+  </section>
+  -->
 
   <!-- What it does -->
   <section>
     <h2>What it does</h2>
-    <p>dlwithit is a two-part tool: a Firefox extension that detects media on any webpage, and a native macOS app that handles the actual downloading. Right-click on any page to pick images, grab videos from platforms like YouTube and Vimeo, or extract embedded video files that browsers can't normally save.</p>
+    <p>dlwithit is a two-part tool: a browser extension (Firefox and Chrome) that detects media on any webpage, and a native macOS app that handles the actual downloading. Right-click on any page to pick images, grab videos from platforms like YouTube and Vimeo, or extract embedded video files that browsers can't normally save.</p>
     <p>The app queues downloads with progress tracking, auto-encodes VP9 to H.264, and can embed source URLs as metadata so you always know where something came from.</p>
   </section>
 
@@ -172,7 +185,7 @@
     <h2>Requirements</h2>
     <ul>
       <li>macOS 14.4 (Sonoma) or later — Apple Silicon or Intel</li>
-      <li>Firefox browser</li>
+      <li>Firefox or Chrome browser</li>
     </ul>
     <p class="muted">Everything else — ffmpeg, yt-dlp, exiftool — is bundled. Nothing else to install.</p>
   </section>
@@ -190,14 +203,22 @@
 
   <!-- Installing the Extension -->
   <section>
-    <h2>Installing the Firefox Extension</h2>
+    <h2>Installing the Browser Extension</h2>
 
+    <h3>Firefox</h3>
     <div class="callout" style="margin-bottom:16px;">Requires <strong>Firefox 140 or later</strong>. To check your version: Help → About Firefox.</div>
-
     <ol>
       <li>Open the <strong>Firefox Extension</strong> folder.</li>
       <li>Drag <code>dlwithit-extension-1.0.0.xpi</code> onto a Firefox window.</li>
       <li>Click <strong>Add</strong> when prompted.</li>
+      <li>The extension is now installed. Access dlwithit by right-clicking on any webpage.</li>
+    </ol>
+
+    <h3>Chrome</h3>
+    <ol>
+      <li>Open Chrome and go to <code>chrome://extensions</code>.</li>
+      <li>Enable <strong>Developer mode</strong> (toggle in the top-right corner).</li>
+      <li>Click <strong>Load unpacked</strong> and select the <strong>Chrome Extension</strong> folder.</li>
       <li>The extension is now installed. Access dlwithit by right-clicking on any webpage.</li>
     </ol>
   </section>
@@ -211,12 +232,8 @@
         <p>Visual overlay to select and download images from any page.</p>
       </div>
       <div class="feature">
-        <strong>Download Media</strong>
-        <p>Download from YouTube, Vimeo, Instagram, TikTok, and hundreds more via yt-dlp.</p>
-      </div>
-      <div class="feature">
-        <strong>Extract Direct Videos</strong>
-        <p>Finds embedded video files in pages (Mux, Squarespace, HLS streams, etc.).</p>
+        <strong>▶️ Video Download</strong>
+        <p>Download from YouTube, Vimeo, Instagram, TikTok, and hundreds more via yt-dlp; also scans pages for embedded video files (Mux, Squarespace, HLS streams, etc.).</p>
       </div>
       <div class="feature">
         <strong>Metadata embedding</strong>
@@ -286,14 +303,16 @@
   <section>
     <h2>Keyboard Shortcuts</h2>
     <table>
-      <thead><tr><th>Shortcut</th><th>Action</th></tr></thead>
+      <thead><tr><th>Shortcut</th><th>Browser</th><th>Action</th></tr></thead>
       <tbody>
-        <tr><td>⌘ F1</td><td>Pick Images</td></tr>
-        <tr><td>⌘ F2</td><td>Download Media</td></tr>
-        <tr><td>⌘ F3</td><td>Extract Direct Videos</td></tr>
+        <tr><td>⌘ F1</td><td>Firefox</td><td>🏞️ Image Picker</td></tr>
+        <tr><td>⌘ F2</td><td>Firefox</td><td>▶️ Video Download</td></tr>
+        <tr><td>⌘ Ctrl 1</td><td>Chrome</td><td>🏞️ Image Picker</td></tr>
+        <tr><td>⌘ Ctrl 2</td><td>Chrome</td><td>▶️ Video Download</td></tr>
       </tbody>
     </table>
-    <p class="muted" style="margin-top:12px;">Shortcuts can be customized in Firefox under <code>about:addons</code> → gear icon → Manage Extension Shortcuts.</p>
+    <div class="callout" style="margin-top:12px;">If your Mac's function keys control hardware features (brightness, volume, etc.), you may need to hold <code>Fn</code> as well — e.g. <code>Fn ⌘ F1</code>. This depends on your keyboard settings in System Settings → Keyboard.</div>
+    <p class="muted" style="margin-top:12px;">Shortcuts can be customized in your browser's extension settings — Firefox: <code>about:addons</code> → gear icon → Manage Extension Shortcuts. Chrome: <code>chrome://extensions/shortcuts</code>.</p>
   </section>
 
   <!-- Troubleshooting -->
@@ -332,12 +351,12 @@
 
     <div class="trouble">
       <strong>Videos not detected on a page</strong>
-      <p>Try <strong>Extract Direct Videos</strong> — it runs a deep scan of the page source looking for video URLs in scripts, data attributes, and metadata. Some sites load video URLs dynamically after interaction, which may not be detectable until you interact with the player first.</p>
+      <p>▶️ Video Download scans the page source for embedded video URLs in scripts, data attributes, and metadata. Some sites lazy-load video — scroll to the video and let it start playing for a few seconds, then invoke ▶️ Video Download again. If it still doesn't appear, the URL may be loaded dynamically after user interaction and may not be capturable.</p>
     </div>
 
     <div class="trouble">
       <strong>Downloaded video won't play or is corrupted</strong>
-      <p>Some sites lazy-load videos — the file only fully loads after you scroll to it and let it play. Go back to the page, play the video for a few seconds, then run <strong>Extract Direct Videos</strong> again. This is especially common on sites like Apple.com.</p>
+      <p>Some sites lazy-load videos — the file only fully loads after you scroll to it and let it play. Go back to the page, play the video for a few seconds, then use ▶️ Video Download again. This is especially common on sites like Apple.com.</p>
     </div>
   </section>
 
