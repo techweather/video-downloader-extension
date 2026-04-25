@@ -172,6 +172,10 @@ app = BUNDLE(
         'NSRequiresAquaSystemAppearance': False,  # Support dark mode
         'LSMultipleInstancesProhibited': True,
         'NSHumanReadableCopyright': '© 2025 dlwithit',
+        'CFBundleURLTypes': [{
+            'CFBundleURLName': 'com.dlwithit.app',
+            'CFBundleURLSchemes': ['dlwithit'],
+        }],
     },
 )
 
