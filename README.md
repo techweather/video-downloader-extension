@@ -25,13 +25,13 @@ Built for designers, filmmakers, and creatives who need to quickly gather visual
 
 ## Features
 
-- **Pick Images** — visual overlay to select and download images from any page
+- **🏞️ Image Picker** — visual overlay to select and download images from any page
 - **▶️ Video Download** — uses yt-dlp to download from YouTube, Vimeo, Instagram, TikTok, and hundreds more; also scans pages for embedded video files (Mux, Squarespace, HLS streams, etc.)
 - **Metadata embedding** — saves the source URL inside downloaded files
 - **VP9 to H.264 encoding** — auto-converts WebM/VP9 downloads with parallel encoding
 - **Playlist support** — detects playlists and lets you pick which videos to download
 - **Organize by platform** — auto-sorts downloads into folders by source site
-- **System tray** — minimizes to tray, click to show/hide
+- **Menu bar** — runs in the macOS menu bar; click the icon to show/hide the app window
 - **Auto-updates yt-dlp** — checks for updates and installs with one click
 
 ## Supported Platforms
