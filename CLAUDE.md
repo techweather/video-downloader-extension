@@ -56,6 +56,18 @@ Ordered — work top to bottom unless I say otherwise:
 11. ~~README: add function key note~~ — done. Keyboard shortcut tables updated in both README.md and README.html with Firefox (Cmd+F1/F2), Chrome (Cmd+Ctrl+1/2), and Fn key callout.
 12. **Tier 2 smoke test** — build a short, focused manual checklist around a fixed tab set (Instagram carousels, Vimeo-heavy portfolio sites, Mux embeds) to replace the existing exhaustive TESTING_CHECKLIST.md. Discussed April 2026.
 
+### Pre-share short list (added April 27, 2026)
+
+Lumping these in before the signed/notarized build, since momentum is good. Each lands on its own feature branch, merged to `main` with `--no-ff` so a single `git revert -m 1 <merge-commit>` can undo any feature cleanly.
+
+13. **LICENSE file** — pick a license (MIT likely) and add `LICENSE` at repo root.
+14. **README simplification pass** — second read-through of both READMEs for clarity/cuts; no new content.
+15. **v1 update-communication plan** — decide and document how users learn about new versions (likely "watch GitHub Releases"). Short README section.
+16. **Vimeo embed 401** — at minimum show a clear error instead of a cryptic one; investigate referer-header fix.
+17. **Hide from Dock + launch-at-login hidden** — two related Settings prefs; biggest user-facing polish item in this batch.
+18. *(Optional)* **Paste-URL fallback** in the app — small, useful when the extension fails.
+19. *(Optional)* **Post-download manual encode** — right-click a completed download to re-encode (covers .webm → .mp4 after the fact).
+
 ---
 
 ## Things I care about for the "ready to share" bar
