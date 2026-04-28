@@ -7,6 +7,12 @@ archive/
 node_modules/
 __pycache__/
 *.pyc
+.venv/
+venv/
+
+# Claude Code local state
+.claude/worktrees/
+.claude/settings.local.json
 
 # OS files
 .DS_Store
