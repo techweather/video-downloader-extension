@@ -105,6 +105,24 @@ These can be customized in your browser's extension shortcut settings:
 - **Keep original** — retain the original file after encoding
 - **System tray** — show/hide tray icon, minimize to tray on close
 
+## Updating dlwithit
+
+The app checks for updates on launch and surfaces a clickable "Update available" link in Settings (next to the version number) when a new release is published. You'll also see a one-time macOS notification on launch when an update is waiting.
+
+### App
+
+When prompted, click the link in Settings — it opens the GitHub release page in your browser. Download the new installer and run it; the new version replaces the old install.
+
+### Firefox extension
+
+Open `about:addons`, remove the existing "dlwithit" extension, then install the new `.xpi` from the release page (drag onto Firefox or use Install Add-on From File).
+
+### Chrome extension
+
+Open `chrome://extensions`, remove the existing "dlwithit" extension, then load the new unpacked extension folder from the release with **Load unpacked**.
+
+> Extensions will auto-update via the Mozilla Add-ons store and Chrome Web Store in a future release.
+
 ## Troubleshooting
 
 **YouTube downloads fail or return errors**

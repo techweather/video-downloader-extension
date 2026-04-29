@@ -6,6 +6,7 @@ Main application window with UI initialization, settings management, and downloa
 import os
 import sys
 import subprocess
+import webbrowser
 from pathlib import Path
 from datetime import datetime
 from urllib.parse import urlparse
@@ -22,6 +23,7 @@ from config.settings import Settings
 from core.downloader import DownloadWorker
 from core.encoder import EncodingWorker
 from core.updater import get_ytdlp_version, VersionCheckWorker, InstallUpdateWorker
+from core.app_updater import AppVersionCheckWorker, is_newer, notify_update_available
 from ui.components.download_item import DownloadItem
 from ui.components.video_selector import VideoSelectorDialog
 from ui.window_utils import bring_window_to_front
@@ -75,6 +77,8 @@ class MainWindow(QMainWindow):
 
         # Check for yt-dlp updates in the background
         self._check_ytdlp_version()
+        # Check for dlwithit app updates in the background
+        self._check_app_version()
     
     def init_ui(self):
         """Initialize the user interface"""
@@ -278,9 +282,14 @@ class MainWindow(QMainWindow):
         self.ytdlp_status_label = QLabel("checking for updates...")
         self.ytdlp_status_label.setStyleSheet("color: #999; font-size: 12px; font-style: italic;")
 
-        app_version_label = QLabel(f"dlwithit {__version__}")
-        app_version_label.setStyleSheet("color: #aaa; font-size: 12px;")
-        app_version_label.setAlignment(Qt.AlignRight)
+        self._app_release_url = None  # set after background check, if newer
+
+        self.app_status_label = QLabel("")
+        self.app_status_label.setStyleSheet("color: #999; font-size: 12px; font-style: italic;")
+
+        self.app_version_label = QLabel(f"dlwithit {__version__}")
+        self.app_version_label.setStyleSheet("color: #aaa; font-size: 12px;")
+        self.app_version_label.setAlignment(Qt.AlignRight)
 
         version_row = QHBoxLayout()
         version_row.setContentsMargins(0, 0, 0, 0)
@@ -288,7 +297,8 @@ class MainWindow(QMainWindow):
         version_row.addWidget(self.ytdlp_version_label)
         version_row.addWidget(self.ytdlp_status_label)
         version_row.addStretch()
-        version_row.addWidget(app_version_label)
+        version_row.addWidget(self.app_status_label)
+        version_row.addWidget(self.app_version_label)
         settings_layout.addLayout(version_row)
 
         settings_widget.setLayout(settings_layout)
@@ -553,6 +563,32 @@ class MainWindow(QMainWindow):
         else:
             self.ytdlp_status_label.setText(message)
             self.ytdlp_status_label.setStyleSheet("color: #e67e22; font-size: 12px; font-style: normal;")
+
+    def _check_app_version(self):
+        """Spawn a background thread to check for dlwithit app updates."""
+        self._app_version_check_worker = AppVersionCheckWorker()
+        self._app_version_check_worker.finished.connect(self._on_app_version_check_done)
+        self._app_version_check_worker.start()
+
+    def _on_app_version_check_done(self, latest, release_url):
+        """Show 'Update available' link + fire one launch notification when newer."""
+        if not latest or not is_newer(latest, __version__):
+            return
+
+        self._app_release_url = release_url
+        self.app_status_label.setText(f"Update available ({latest})")
+        self.app_status_label.setStyleSheet(
+            "color: #2980b9; font-size: 12px; font-style: normal; "
+            "text-decoration: underline; cursor: pointer;"
+        )
+        self.app_status_label.setCursor(Qt.PointingHandCursor)
+        self.app_status_label.mousePressEvent = lambda _: self._open_app_release_page()
+        notify_update_available(latest)
+
+    def _open_app_release_page(self):
+        """Open the GitHub release page in the user's default browser."""
+        if self._app_release_url:
+            webbrowser.open(self._app_release_url)
 
     def tray_activated(self, reason):
         """Handle system tray icon activation (single-click toggle, works on Windows/Linux)"""
