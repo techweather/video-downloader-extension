@@ -5,3 +5,5 @@ yt-dlp>=2023.0.0
 requests>=2.25.0
 pyinstaller>=6.0.0
 pytest>=7.0.0
+pyobjc-core>=10.0; sys_platform == "darwin"
+pyobjc-framework-Cocoa>=10.0; sys_platform == "darwin"

@@ -75,6 +75,9 @@ window = None
 
 
 if __name__ == '__main__':
+    # --hidden suppresses the window on launch (used by the launch-at-login item).
+    launched_hidden = '--hidden' in sys.argv
+
     # Create Qt application
     qt_app = QApplication(sys.argv)
     qt_app.setQuitOnLastWindowClosed(False)  # Important for macOS
@@ -82,7 +85,8 @@ if __name__ == '__main__':
 
     # Create main window
     window = MainWindow(download_queue)
-    window.show()  # Show immediately for testing
+    if not launched_hidden:
+        window.show()
     
     # Create and configure Flask server
     flask_server = FlaskServer(port=5555, debug=False)
