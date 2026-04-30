@@ -12,8 +12,9 @@ from datetime import datetime
 from urllib.parse import urlparse
 
 from PyQt5.QtWidgets import (QMainWindow, QWidget, QVBoxLayout, QHBoxLayout, QGridLayout,
-                           QPushButton, QLabel, QListWidget, QListWidgetItem, QAbstractItemView,
-                           QSystemTrayIcon, QMenu, QAction, QCheckBox, QComboBox, QSizePolicy,
+                           QPushButton, QLabel, QLineEdit, QListWidget, QListWidgetItem,
+                           QAbstractItemView, QMessageBox, QSystemTrayIcon, QMenu, QAction,
+                           QCheckBox, QComboBox, QSizePolicy,
                            QFileDialog, QApplication, QDesktopWidget)
 from PyQt5.QtCore import Qt, pyqtSignal, QRect
 from PyQt5.QtGui import QIcon
@@ -25,6 +26,7 @@ from core.encoder import EncodingWorker
 from core.updater import get_ytdlp_version, VersionCheckWorker, InstallUpdateWorker
 from core.app_updater import AppVersionCheckWorker, is_newer, notify_update_available
 from core.macos import set_dock_visible, set_launch_at_login, refresh_dock_icon
+from core.url_router import classify_pasted_url
 from ui.components.download_item import DownloadItem
 from ui.components.video_selector import VideoSelectorDialog
 from ui.window_utils import bring_window_to_front
@@ -99,7 +101,8 @@ class MainWindow(QMainWindow):
         self._create_settings_section(layout)
         layout.addSpacing(8)
         self._create_download_queue_section(layout)
-        
+        self._create_paste_url_row(layout)
+
         # Footer: active downloads (left) + queue count (right)
         footer_layout = QHBoxLayout()
         self.status_label = QLabel("Active downloads: 0")
@@ -519,6 +522,72 @@ class MainWindow(QMainWindow):
         """Toggle system tray icon visibility based on checkbox"""
         self.settings['show_in_tray'] = checked
         Settings.save(self.settings)
+
+    def _create_paste_url_row(self, parent_layout):
+        """Build the paste-URL fallback row (used when the extension can't be).
+
+        Sits between the download queue and the footer. Sean wants to
+        explore collapsing this into a reveal later — kept as its own
+        method so it's easy to relocate or wrap in a QToolButton.
+        """
+        paste_layout = QHBoxLayout()
+        paste_layout.setContentsMargins(0, 4, 0, 0)
+        paste_layout.setSpacing(6)
+
+        self.paste_url_input = QLineEdit()
+        self.paste_url_input.setPlaceholderText("Paste URL…")
+        self.paste_url_input.setStyleSheet(
+            "QLineEdit { background: #3a3a3a; color: #e0e0e0; "
+            "border: 1px solid #555; border-radius: 6px; padding: 6px 10px; "
+            "font-size: 12px; }"
+            "QLineEdit:focus { border-color: #5ab0ff; }"
+        )
+        self.paste_url_input.returnPressed.connect(self._submit_pasted_url)
+
+        self.paste_url_button = QPushButton("Download")
+        self.paste_url_button.setStyleSheet(
+            "QPushButton { background: #4a4a4a; color: #e0e0e0; "
+            "border: 1px solid #555; border-radius: 6px; padding: 6px 14px; "
+            "font-size: 12px; }"
+            "QPushButton:hover { background: #555; }"
+            "QPushButton:pressed { background: #3a3a3a; }"
+        )
+        self.paste_url_button.clicked.connect(self._submit_pasted_url)
+
+        paste_layout.addWidget(self.paste_url_input, stretch=1)
+        paste_layout.addWidget(self.paste_url_button)
+        parent_layout.addLayout(paste_layout)
+
+    def _submit_pasted_url(self):
+        """Route a pasted URL through classify and queue it for download."""
+        url = self.paste_url_input.text().strip()
+        if not url:
+            return
+
+        kind = classify_pasted_url(url)
+
+        if kind == 'unsupported':
+            QMessageBox.information(
+                self,
+                "Can't auto-detect media at that URL",
+                "Couldn't determine what to download from this URL.\n\n"
+                "If you're trying to pick images from a webpage, use the "
+                "browser extension's \U0001F3DE️ Pick Images on the page "
+                "directly — page scanning needs the in-browser context."
+            )
+            return
+
+        # Mirror the extension's payload shape so the existing add_download
+        # path handles it without special casing. The image path overrides
+        # the title with the URL filename; for video we pass a placeholder
+        # — yt-dlp will fill in the real title once it extracts info.
+        self.new_download.emit({
+            'url': url,
+            'type': kind,
+            'pageUrl': url,
+            'title': os.path.basename(urlparse(url).path) or 'Pasted URL',
+        })
+        self.paste_url_input.clear()
 
     def toggle_hide_from_dock(self, checked):
         """Toggle Dock icon visibility live (no restart needed)."""
