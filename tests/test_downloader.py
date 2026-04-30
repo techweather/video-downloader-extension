@@ -97,10 +97,25 @@ class TestDownloadWorker:
             ('Random error message', 'https://youtube.com/watch?v=123', False),
             ('Network timeout', 'https://example.com/video.mp4', False)
         ]
-        
+
         for error_message, url, expected in test_cases:
             result = download_worker.is_vimeo_embed_error(error_message, url)
             assert result == expected
+
+    def test_vimeo_fallback_failed_error_wraps_original(self, download_worker):
+        """When both embed and direct URL fail, wrap the error with friendly text."""
+        original = Exception("ERROR: [vimeo] 1234567: HTTP Error 401: Unauthorized")
+        wrapped = download_worker.vimeo_fallback_failed_error(original)
+
+        msg = str(wrapped)
+        # User-actionable framing comes first so the truncated short-error is useful
+        assert msg.startswith("Couldn't access this Vimeo video.")
+        assert "private" in msg
+        assert "password-protected" in msg
+        assert "geo-restricted" in msg
+        # Original error preserved for the Report Error dialog
+        assert "401" in msg
+        assert "Unauthorized" in msg
     
     @patch('requests.get')
     def test_download_image_success(self, mock_get, download_worker, temp_download_dir):

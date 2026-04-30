@@ -528,9 +528,22 @@ class DownloadWorker(QThread):
         
         has_vimeo = any(vimeo_indicators)
         has_access_error = any(access_errors)
-        
+
         return has_vimeo and has_access_error
-    
+
+    def vimeo_fallback_failed_error(self, original_error):
+        """Wrap a fallback-failed Vimeo embed error with user-friendly context.
+
+        Called when both the embed URL and the direct vimeo.com URL fail —
+        usually means the video is private, password-protected, or geo-locked.
+        The original error tail is preserved for the Report Error dialog.
+        """
+        return Exception(
+            "Couldn't access this Vimeo video. It may be private, "
+            "password-protected, or geo-restricted. (Tried both the embed "
+            f"and direct vimeo.com URL.) Underlying error: {original_error}"
+        )
+
     def embed_video_metadata_if_requested(self, filepath, metadata_option, info, source_url):
         """
         Embed metadata into video file if embedded metadata is requested
@@ -893,7 +906,7 @@ class DownloadWorker(QThread):
                                     # Mark that we used a Vimeo fallback - path configuration will happen normally
                                     download['_used_vimeo_fallback'] = True
                                 except Exception as fallback_error:
-                                    raise extract_error  # Re-raise original error
+                                    raise self.vimeo_fallback_failed_error(extract_error)
                             else:
                                 raise extract_error  # Re-raise original error
                         else:
@@ -1123,9 +1136,9 @@ class DownloadWorker(QThread):
                                     # Also try to override any extractor-specific templates
                                     with yt_dlp.YoutubeDL(fallback_ydl_opts) as ydl:
                                         info = ydl.extract_info(fallback_url, download=True)
-                                    
+
                                 except Exception as fallback_error:
-                                    raise ytdl_error  # Re-raise original error
+                                    raise self.vimeo_fallback_failed_error(ytdl_error)
                             else:
                                 raise ytdl_error  # Re-raise original error
                         else:
