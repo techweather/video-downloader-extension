@@ -69,6 +69,10 @@ Lumping these in before the signed/notarized build, since momentum is good. Each
 19. *(Optional)* **Post-download manual encode** — right-click a completed download to re-encode (covers .webm → .mp4 after the fact).
 20. **Signed/notarized `.pkg` installer with guided extension install** — pivoted to from `.dmg` for a Gatekeeper-free first-launch experience. Component-choice screen (Firefox/Chrome/both); post-install script triggers guided (not silent — see Distribution Plan note) extension install. **Hard prerequisite: priority #5 (Apple Dev enrollment + signing certs) must be done first.** See `01_Projects/dlwithit/Distribution Plan.md` in Obsidian for the full operational picture (signing, notarization sequencing, extension-install constraints, v2 destinations).
 
+21. **Paste-URL UI revisit** — the v1 paste-URL row sits unconditionally at the bottom of the main window, between the queue and the footer. Sean wants to think through whether that's right for first-time users (extension is the canonical entry — paste shouldn't compete for attention). Options to consider: a small disclosure/reveal arrow that hides the field by default, a Settings toggle to show/hide it, or moving it into a menu. `_create_paste_url_row` in `ui/main_window.py` is its own method to make relocation/wrapping easy.
+
+22. **README mention of paste-URL fallback** — both `README.md` and `README.html` need a brief note about the in-app paste-URL feature. Audience framing should mirror the original use-case discussion: an escape hatch for when the extension isn't available (Safari/Edge users, URLs from non-browser sources like Slack/iMessage, extension misfires). Keep it short — one short paragraph or a sentence under Features. Make clear that page-level image picking remains extension-only (Pick Images needs in-browser DOM context).
+
 ---
 
 ## Things I care about for the "ready to share" bar
