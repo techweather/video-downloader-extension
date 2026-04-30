@@ -28,6 +28,8 @@ class Settings:
             'metadata_option': 'none',
             'show_in_tray': True,
             'tray_minimize_notified': False,
+            'hide_from_dock': False,
+            'launch_at_login': False,
             'window_geometry': {
                 'x': None,  # Will be set to top-right corner by default
                 'y': None,

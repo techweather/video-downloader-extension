@@ -24,6 +24,7 @@ from core.downloader import DownloadWorker
 from core.encoder import EncodingWorker
 from core.updater import get_ytdlp_version, VersionCheckWorker, InstallUpdateWorker
 from core.app_updater import AppVersionCheckWorker, is_newer, notify_update_available
+from core.macos import set_dock_visible, set_launch_at_login, refresh_dock_icon
 from ui.components.download_item import DownloadItem
 from ui.components.video_selector import VideoSelectorDialog
 from ui.window_utils import bring_window_to_front
@@ -56,6 +57,9 @@ class MainWindow(QMainWindow):
         self.download_items = {}
         self.settings = Settings.load()
         self._first_download_received = False  # Track first download for bring-to-front
+
+        # Apply Dock visibility from saved setting before any UI work.
+        set_dock_visible(not self.settings.get('hide_from_dock', False))
         
         # Set app icon (appears in dock and window title bar)
         self._assets_dir = os.path.join(os.path.dirname(os.path.dirname(__file__)), 'assets')
@@ -183,6 +187,16 @@ class MainWindow(QMainWindow):
         self.show_tray_checkbox.toggled.connect(self.toggle_tray_visibility)
         self.show_tray_checkbox.setStyleSheet(_chk_style)
 
+        self.hide_dock_checkbox = QCheckBox("Hide from Dock")
+        self.hide_dock_checkbox.setChecked(self.settings.get('hide_from_dock', False))
+        self.hide_dock_checkbox.toggled.connect(self.toggle_hide_from_dock)
+        self.hide_dock_checkbox.setStyleSheet(_chk_style)
+
+        self.launch_at_login_checkbox = QCheckBox("Launch at login (hidden)")
+        self.launch_at_login_checkbox.setChecked(self.settings.get('launch_at_login', False))
+        self.launch_at_login_checkbox.toggled.connect(self.toggle_launch_at_login)
+        self.launch_at_login_checkbox.setStyleSheet(_chk_style)
+
         # Metadata options dropdown (self-contained, no separate label)
         self.metadata_combo = QComboBox()
         self.metadata_combo.addItems([
@@ -259,6 +273,8 @@ class MainWindow(QMainWindow):
         grid_layout.addWidget(self.show_tray_checkbox, 1, 1)
         grid_layout.addWidget(self.encode_checkbox, 2, 0)
         grid_layout.addWidget(self.keep_original_checkbox, 2, 1)
+        grid_layout.addWidget(self.hide_dock_checkbox, 3, 0)
+        grid_layout.addWidget(self.launch_at_login_checkbox, 3, 1)
 
         settings_layout.addLayout(grid_layout)
 
@@ -503,6 +519,21 @@ class MainWindow(QMainWindow):
         """Toggle system tray icon visibility based on checkbox"""
         self.settings['show_in_tray'] = checked
         Settings.save(self.settings)
+
+    def toggle_hide_from_dock(self, checked):
+        """Toggle Dock icon visibility live (no restart needed)."""
+        self.settings['hide_from_dock'] = checked
+        Settings.save(self.settings)
+        set_dock_visible(not checked)
+        if not checked:
+            # Restore our icon — macOS drops it on Accessory→Regular.
+            refresh_dock_icon(os.path.join(self._assets_dir, 'app-icon.png'))
+
+    def toggle_launch_at_login(self, checked):
+        """Add or remove dlwithit from macOS login items."""
+        self.settings['launch_at_login'] = checked
+        Settings.save(self.settings)
+        set_launch_at_login(checked, hidden=True)
         if checked:
             self.tray_icon.show()
         else:
