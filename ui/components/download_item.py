@@ -30,6 +30,10 @@ class DownloadItem(QWidget):
         self.download_id = download_id
         self.full_error_message = None
         self._url = url
+        self._extra_action_buttons = []
+        self._reencode_btn = None
+        self._reencode_filepath = None
+        self._reencode_callback = None
 
         self.setObjectName("downloadItem")
         self.setAttribute(Qt.WA_StyledBackground, True)  # required for QWidget to paint stylesheet bg
@@ -290,7 +294,7 @@ class DownloadItem(QWidget):
     def set_error(self, short_error, full_error):
         """Set error information for this download."""
         self.full_error_message = full_error
-        self._error_type = "Encoding Error" if full_error.startswith("Encoding Error") else "Download Error"
+        self._error_type = "Conversion Error" if full_error.startswith("Conversion Error") else "Download Error"
         self.status_label.setAlignment(Qt.AlignLeft | Qt.AlignVCenter)
         self.status_label.setText(f"Failed: {short_error}")
         self.status_label.setStyleSheet("color: #f87171;")
@@ -352,6 +356,57 @@ class DownloadItem(QWidget):
 
         reveal_btn.clicked.connect(reveal)
         self.action_widget.layout().addWidget(reveal_btn)
+        self._extra_action_buttons.append(reveal_btn)
+
+    def clear_extra_action_buttons(self):
+        """Remove dynamically-added action buttons (reveal, re-encode) and reset state."""
+        for btn in self._extra_action_buttons:
+            btn.setParent(None)
+            btn.deleteLater()
+        self._extra_action_buttons = []
+        self._reencode_btn = None
+        self._reencode_filepath = None
+        self._reencode_callback = None
+
+    def enable_reencode(self, filepath, callback):
+        """Show a Re-encode button for this item."""
+        self._reencode_filepath = filepath
+        self._reencode_callback = callback
+
+        btn = QPushButton("Convert to MP4")
+        btn.setFixedWidth(110)
+        btn.setStyleSheet("""
+            QPushButton {
+                background: qlineargradient(x1:0, y1:0, x2:0, y2:1,
+                    stop:0 #a48ac0, stop:1 #6f5d8c);
+                color: white;
+                border: none;
+                padding: 6px 8px;
+                border-radius: 5px;
+                font-size: 11px;
+            }
+            QPushButton:hover {
+                background: qlineargradient(x1:0, y1:0, x2:0, y2:1,
+                    stop:0 #9078b0, stop:1 #5c4d77);
+            }
+        """)
+        btn.clicked.connect(self._trigger_reencode)
+        self.action_widget.layout().addWidget(btn)
+        self._extra_action_buttons.append(btn)
+        self._reencode_btn = btn
+
+    def set_reencode_busy(self, busy):
+        """Hide/show the Re-encode button without losing state, so it can be restored on cancel."""
+        if self._reencode_btn is None:
+            return
+        if busy:
+            self._reencode_btn.hide()
+        else:
+            self._reencode_btn.show()
+
+    def _trigger_reencode(self):
+        if self._reencode_callback and self._reencode_filepath:
+            self._reencode_callback(self._reencode_filepath)
 
     def _clipboard_error_text(self):
         """Format error details as plain text for clipboard."""

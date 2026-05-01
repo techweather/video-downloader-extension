@@ -22,7 +22,7 @@ from PyQt5.QtGui import QIcon
 from version import __version__
 from config.settings import Settings
 from core.downloader import DownloadWorker
-from core.encoder import EncodingWorker
+from core.encoder import EncodingWorker, file_needs_encoding
 from core.updater import get_ytdlp_version, VersionCheckWorker, InstallUpdateWorker
 from core.app_updater import AppVersionCheckWorker, is_newer, notify_update_available
 from core.macos import set_dock_visible, set_launch_at_login, refresh_dock_icon
@@ -170,7 +170,7 @@ class MainWindow(QMainWindow):
             }}
         """
 
-        self.encode_checkbox = QCheckBox("Auto-encode WebM/VP9 to H.264")
+        self.encode_checkbox = QCheckBox("Auto-convert WebM/VP9 to MP4")
         self.encode_checkbox.setChecked(self.settings.get('encode_vp9', True))
         self.encode_checkbox.toggled.connect(self.save_settings)
         self.encode_checkbox.setStyleSheet(_chk_style)
@@ -1123,7 +1123,7 @@ class MainWindow(QMainWindow):
                 widget.progress_bar.setValue(100)  # Show as complete since we can't track merge progress
             elif status == 'encoding':
                 widget.set_encoding()
-                widget.status_label.setText("Encoding to H.264...")
+                widget.status_label.setText("Converting to MP4...")
                 widget.status_label.setStyleSheet("color: #9b59b6;")
                 widget.progress_bar.setValue(0)  # Reset for encoding progress
             elif status.startswith('embedding'):
@@ -1135,7 +1135,9 @@ class MainWindow(QMainWindow):
         if download_id in self.download_items:
             widget = self.download_items[download_id]['widget']
             widget.progress_bar.setValue(100)
-            
+            # Clear any prior reveal/re-encode buttons (e.g. after a manual re-encode pass)
+            widget.clear_extra_action_buttons()
+
             # Handle multi-file downloads
             if "|MULTI|" in path:
                 actual_path, _, file_count = path.partition("|MULTI|")
@@ -1149,6 +1151,14 @@ class MainWindow(QMainWindow):
                 widget.status_label.setStyleSheet("color: #4ade80;")
 
                 widget.set_reveal(path, is_folder=False)
+
+                # Offer manual re-encode if the file is still VP9/VP8/AV1
+                # (e.g. user opted out of auto-encoding, or it was a direct .webm)
+                try:
+                    if file_needs_encoding(path):
+                        widget.enable_reencode(path, lambda p, did=download_id: self.start_manual_reencode(did, p))
+                except Exception:
+                    pass
 
             widget.set_complete()
             
@@ -1239,16 +1249,28 @@ class MainWindow(QMainWindow):
         if download_id in self.download_items:
             widget = self.download_items[download_id]['widget']
             widget.progress_bar.setValue(100)
-            widget.status_label.setText("Queued for encoding...")
+            widget.status_label.setText("Queued for conversion...")
             widget.status_label.setStyleSheet("color: #8e44ad;")  # Purple to indicate encoding-related
         self.encoding_worker.add_job(download_id, filepath, keep_original, metadata_info)
+
+    def start_manual_reencode(self, download_id, filepath):
+        """User-triggered re-encode of an already-completed download. Keeps the original."""
+        if download_id not in self.download_items:
+            return
+        widget = self.download_items[download_id]['widget']
+        widget.set_reencode_busy(True)
+        widget.cancel_btn.setEnabled(True)
+        widget.cancel_btn.show()
+        widget.progress_bar.setValue(0)
+        # keep_original=True so the source .webm stays put alongside the new _h264.mp4
+        self.queue_encoding_job(download_id, filepath, True, {})
 
     def encoding_started_handler(self, download_id):
         """Handle encoding started"""
         if download_id in self.download_items:
             widget = self.download_items[download_id]['widget']
             widget.set_encoding()
-            widget.status_label.setText("Encoding to H.264...")
+            widget.status_label.setText("Converting to MP4...")
             widget.status_label.setStyleSheet("color: #9b59b6;")
             widget.progress_bar.setValue(0)
 
@@ -1272,8 +1294,10 @@ class MainWindow(QMainWindow):
         if download_id in self.download_items:
             widget = self.download_items[download_id]['widget']
             widget.progress_bar.setValue(0)
-            short_error = f"Encoding: {self._extract_short_error(error)}"
-            widget.set_error(short_error, f"Encoding Error: {error}")
+            short_error = f"Conversion: {self._extract_short_error(error)}"
+            widget.set_error(short_error, f"Conversion Error: {error}")
+            # If a manual re-encode failed, let the user retry
+            widget.set_reencode_busy(False)
 
         self._update_status_footer()
 
@@ -1282,9 +1306,11 @@ class MainWindow(QMainWindow):
         if download_id in self.download_items:
             widget = self.download_items[download_id]['widget']
             widget.progress_bar.setValue(0)
-            widget.status_label.setText("Encoding Cancelled")
+            widget.status_label.setText("Conversion Cancelled")
             widget.status_label.setStyleSheet("color: #888;")
             widget.cancel_btn.setEnabled(False)
+            # If this was a manual re-encode, leave the Re-encode button available for retry
+            widget.set_reencode_busy(False)
 
         self._update_status_footer()
 
@@ -1295,7 +1321,7 @@ class MainWindow(QMainWindow):
             status = item_data['widget'].status_label.text()
             if (status.startswith("Complete") or status.startswith("Failed") or
                 status.startswith("Skipped") or status.startswith("Cancel") or
-                status.startswith("Encoding Cancelled") or status.startswith("Encoding failed")):
+                status.startswith("Conversion Cancelled") or status.startswith("Conversion failed")):
                 to_remove.append(download_id)
 
         # Remove items from UI and storage
@@ -1317,7 +1343,7 @@ class MainWindow(QMainWindow):
             # Active if not in a terminal state
             if not (status.startswith("Complete") or status.startswith("Failed") or
                     status.startswith("Cancel") or status.startswith("Skipped") or
-                    status.startswith("Encoding Cancelled") or status.startswith("Encoding failed")):
+                    status.startswith("Conversion Cancelled") or status.startswith("Conversion failed")):
                 count += 1
         return count
 
