@@ -573,10 +573,12 @@ class ErrorReportDialog(QDialog):
         btn_row = QHBoxLayout()
         btn_row.setSpacing(8)
 
-        copy_btn = QPushButton("Copy to Clipboard")
-        copy_btn.setStyleSheet(self._BTN_SECONDARY)
-        copy_btn.clicked.connect(self._copy_to_clipboard)
-        btn_row.addWidget(copy_btn)
+        self._copy_btn = QPushButton("Copy to Clipboard")
+        self._copy_btn.setStyleSheet(self._BTN_SECONDARY)
+        self._copy_btn.clicked.connect(self._copy_to_clipboard)
+        # Lock minimum width to the initial size so "Copied!" doesn't shrink the button
+        self._copy_btn.setMinimumWidth(self._copy_btn.sizeHint().width())
+        btn_row.addWidget(self._copy_btn)
 
         btn_row.addStretch()
 
@@ -592,8 +594,27 @@ class ErrorReportDialog(QDialog):
 
         layout.addLayout(btn_row)
 
+    _BTN_COPIED = """
+        QPushButton {
+            background: qlineargradient(x1:0, y1:0, x2:0, y2:1,
+                stop:0 #34d399, stop:1 #059669);
+            border: 1px solid #059669;
+            border-radius: 6px;
+            color: white;
+            padding: 8px 16px;
+            font-size: 12px;
+        }
+    """
+
     def _copy_to_clipboard(self):
         QApplication.clipboard().setText(self.error_info.get('preview_text', ''))
+        self._copy_btn.setText("Copied!")
+        self._copy_btn.setStyleSheet(self._BTN_COPIED)
+        QTimer.singleShot(2000, self._reset_copy_btn)
+
+    def _reset_copy_btn(self):
+        self._copy_btn.setText("Copy to Clipboard")
+        self._copy_btn.setStyleSheet(self._BTN_SECONDARY)
 
     def _send_report(self):
         self._send_btn.setEnabled(False)
