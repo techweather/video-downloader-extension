@@ -167,7 +167,7 @@ class VideoEncoder:
                         
                         if duration and duration > 0 and progress_callback:
                             percent = min(int((out_seconds / duration) * 100), 100)
-                            progress_callback(percent, f"Encoding... {percent}%")
+                            progress_callback(percent, f"Converting... {percent}%")
                     except:
                         pass
             

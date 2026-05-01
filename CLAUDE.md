@@ -73,6 +73,10 @@ Lumping these in before the signed/notarized build, since momentum is good. Each
 
 22. **README mention of paste-URL fallback** — both `README.md` and `README.html` need a brief note about the in-app paste-URL feature. Audience framing should mirror the original use-case discussion: an escape hatch for when the extension isn't available (Safari/Edge users, URLs from non-browser sources like Slack/iMessage, extension misfires). Keep it short — one short paragraph or a sentence under Features. Make clear that page-level image picking remains extension-only (Pick Images needs in-browser DOM context).
 
+23. **README mention of Convert to MP4** — both READMEs should briefly explain the manual MP4 conversion feature added in priority #19. Frame it for the user, not the codec: "If a downloaded video doesn't play in QuickTime/Premiere/After Effects (typically because it's WebM/VP9), click **Convert to MP4** on the completed item to transcode it. The original is kept alongside the new `_h264.mp4`." Pair with the existing **Auto-convert WebM/VP9 to MP4** Settings checkbox so the user understands the two paths (auto on download vs. manual after the fact). Keep it under a short paragraph.
+
+24. **Bundle deno into the .pkg for full YouTube format support** — yt-dlp prints a runtime warning when no JS runtime is available; without one, some newer YouTube formats (anti-bot-protected) silently degrade or are missing. In dev, `brew install deno` resolves it. For the shipped app, deno would need to be added to the PyInstaller spec alongside ffmpeg/ffprobe (mirroring the `Contents/Frameworks/` bundling pattern in `core/encoder.py:14-30`) so end-user installs aren't quietly missing format options. Defer until after #20 (.pkg infra exists). Adds ~80MB to the bundle.
+
 ---
 
 ## Things I care about for the "ready to share" bar
