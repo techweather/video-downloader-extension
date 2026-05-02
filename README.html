@@ -103,7 +103,7 @@
 
   /* Features list */
   .features { display: flex; flex-direction: column; gap: 14px; margin-top: 4px; }
-  .feature strong { display: block; margin-bottom: 2px; }
+  .feature > strong { display: block; margin-bottom: 2px; }
   .feature p { font-size: 14px; color: var(--muted); margin: 0; }
 
   /* Metadata option cards */
@@ -129,7 +129,7 @@
     align-items: baseline;
   }
   .settings li:last-child { border-bottom: none; padding-bottom: 0; }
-  .settings li strong { min-width: 160px; flex-shrink: 0; }
+  .settings li strong { min-width: 220px; flex-shrink: 0; }
   .settings li span { color: var(--muted); }
 
   /* Callout */
@@ -210,7 +210,7 @@
   <section>
     <h2>What it does</h2>
     <p>dlwithit is a two-part tool: a browser extension (Firefox and Chrome) that detects media on any webpage, and a native macOS app that handles the actual downloading. Right-click on any page to pick images, grab videos from platforms like YouTube and Vimeo, or extract embedded video files that browsers can't normally save.</p>
-    <p>The app queues downloads with progress tracking, auto-encodes VP9 to H.264, and can embed source URLs as metadata so you always know where something came from.</p>
+    <p>The app queues downloads with progress tracking, auto-converts WebM/VP9 to MP4, and can embed source URLs as metadata so you always know where something came from.</p>
   </section>
 
   <!-- Requirements -->
@@ -273,8 +273,8 @@
         <p>Saves the source URL inside downloaded files so you always know where something came from.</p>
       </div>
       <div class="feature">
-        <strong>VP9 to H.264 encoding</strong>
-        <p>Auto-converts WebM/VP9 downloads to H.264 MP4.</p>
+        <strong>Convert to MP4</strong>
+        <p>Auto-converts WebM/VP9 video to MP4 (H.264) so it plays in QuickTime, Premiere, etc. If a download bypasses auto-conversion, a <strong>Convert to MP4</strong> button appears on the completed item.</p>
       </div>
       <div class="feature">
         <strong>Playlist support</strong>
@@ -283,6 +283,10 @@
       <div class="feature">
         <strong>Organize by platform</strong>
         <p>Auto-sorts downloads into folders by source site.</p>
+      </div>
+      <div class="feature">
+        <strong>Paste a URL</strong>
+        <p>Escape hatch for direct media URLs when you can't use the extension — Safari/Edge users, links from Slack or iMessage, or extension misfires. Click <code>▶ Paste a URL</code> at the bottom of the app window to expand the input. Page scanning for lazy-loaded media still needs the extension.</p>
       </div>
       <div class="feature">
         <strong>Auto-updates yt-dlp</strong>
@@ -306,7 +310,7 @@
       <li><strong>Save location</strong> <span>Default <code>~/Downloads/dlwithit/</code>, or set a custom folder</span></li>
       <li><strong>Organize by platform</strong> <span>Auto-create subfolders for YouTube, Instagram, etc.</span></li>
       <li><strong>Metadata</strong> <span>None, embedded in file, or sidecar — see below</span></li>
-      <li><strong>Auto-encode VP9</strong> <span>Convert WebM/VP9 to H.264 MP4 after download</span></li>
+      <li><strong>Auto-convert WebM/VP9 to MP4</strong> <span>Converts incompatible video formats to H.264 after download</span></li>
       <li><strong>Keep original</strong> <span>Retain the original file after encoding</span></li>
       <li><strong>Menu bar</strong> <span>Show/hide the menu bar icon; minimize to menu bar on close</span></li>
     </ul>
