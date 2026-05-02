@@ -119,17 +119,16 @@ class DownloadItem(QWidget):
         self.cancel_btn.setFixedWidth(110)
         self.cancel_btn.setStyleSheet("""
             QPushButton {
-                background: qlineargradient(x1:0, y1:0, x2:0, y2:1,
-                    stop:0 #f87171, stop:1 #dc2626);
-                color: white;
-                border: none;
+                background: #3a3a3a;
+                color: #ccc;
+                border: 1px solid #555;
                 padding: 6px 8px;
                 border-radius: 5px;
                 font-size: 11px;
             }
             QPushButton:hover {
-                background: qlineargradient(x1:0, y1:0, x2:0, y2:1,
-                    stop:0 #ef4444, stop:1 #b91c1c);
+                background: #4a4a4a;
+                border-color: #666;
             }
         """)
         self.cancel_btn.hide()
