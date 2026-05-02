@@ -10,7 +10,7 @@ A browser extension + desktop app for downloading images and videos from the web
 
 dlwithit is a two-part tool: a browser extension (Firefox and Chrome) that detects media on any webpage, and a native macOS app that handles the actual downloading. Right-click on any page to pick images, grab videos from platforms like YouTube and Vimeo, or extract embedded video files that browsers can't normally save.
 
-Built for designers, filmmakers, and creatives who need to quickly gather visual references. The app queues downloads with progress tracking, auto-encodes VP9 to H.264, and can embed source URLs as metadata so you always know where something came from.
+Built for designers, filmmakers, and creatives who need to quickly gather visual references. The app queues downloads with progress tracking, auto-converts WebM/VP9 to MP4, and can embed source URLs as metadata so you always know where something came from.
 
 ---
 
@@ -28,9 +28,10 @@ Built for designers, filmmakers, and creatives who need to quickly gather visual
 - **🏞️ Image Picker** — visual overlay to select and download images from any page
 - **▶️ Video Download** — uses yt-dlp to download from YouTube, Vimeo, Instagram, TikTok, and hundreds more; also scans pages for embedded video files (Mux, Squarespace, HLS streams, etc.)
 - **Metadata embedding** — saves the source URL inside downloaded files
-- **VP9 to H.264 encoding** — auto-converts WebM/VP9 downloads with parallel encoding
+- **Convert to MP4** — auto-converts WebM/VP9 video to MP4 (H.264) so it plays in QuickTime, Premiere, etc. If a download bypasses auto-conversion, a **Convert to MP4** button appears on the completed item.
 - **Playlist support** — detects playlists and lets you pick which videos to download
 - **Organize by platform** — auto-sorts downloads into folders by source site
+- **Paste a URL** — escape hatch for direct media URLs when you can't use the extension (Safari/Edge users, links from Slack or iMessage). Click `▶ Paste a URL` at the bottom of the app window to expand the input. Page scanning for lazy-loaded media still needs the extension.
 - **Menu bar** — runs in the macOS menu bar; click the icon to show/hide the app window
 - **Auto-updates yt-dlp** — checks for updates and installs with one click
 
@@ -101,7 +102,7 @@ These can be customized in your browser's extension shortcut settings:
 - **Save location** — default `~/Downloads/dlwithit`, or set a custom folder
 - **Organize by platform** — auto-create subfolders for YouTube, Instagram, etc.
 - **Metadata** — none, embedded in file, or sidecar files
-- **Auto-encode VP9** — convert WebM/VP9 to H.264 MP4 after download
+- **Auto-convert WebM/VP9 to MP4** — converts incompatible video formats to H.264 after download
 - **Keep original** — retain the original file after encoding
 - **System tray** — show/hide tray icon, minimize to tray on close
 
