@@ -14,7 +14,7 @@ from urllib.parse import urlparse
 from PyQt5.QtWidgets import (QMainWindow, QWidget, QVBoxLayout, QHBoxLayout, QGridLayout,
                            QPushButton, QLabel, QLineEdit, QListWidget, QListWidgetItem,
                            QAbstractItemView, QMessageBox, QSystemTrayIcon, QMenu, QAction,
-                           QCheckBox, QComboBox, QSizePolicy,
+                           QCheckBox, QComboBox, QSizePolicy, QFrame,
                            QFileDialog, QApplication, QDesktopWidget)
 from PyQt5.QtCore import Qt, pyqtSignal, QRect
 from PyQt5.QtGui import QIcon
@@ -102,6 +102,16 @@ class MainWindow(QMainWindow):
         layout.addSpacing(8)
         self._create_download_queue_section(layout)
         self._create_paste_url_row(layout)
+
+        # Thin separator between paste-URL area and footer
+        separator = QFrame()
+        separator.setFrameShape(QFrame.HLine)
+        separator.setFrameShadow(QFrame.Plain)
+        separator.setStyleSheet("color: #404040;")
+        separator.setFixedHeight(1)
+        layout.addSpacing(6)
+        layout.addWidget(separator)
+        layout.addSpacing(4)
 
         # Footer: active downloads (left) + queue count (right)
         footer_layout = QHBoxLayout()
@@ -524,13 +534,40 @@ class MainWindow(QMainWindow):
         Settings.save(self.settings)
 
     def _create_paste_url_row(self, parent_layout):
-        """Build the paste-URL fallback row (used when the extension can't be).
+        """Build the paste-URL fallback row as a collapsible disclosure.
 
-        Sits between the download queue and the footer. Sean wants to
-        explore collapsing this into a reveal later — kept as its own
-        method so it's easy to relocate or wrap in a QToolButton.
+        Sits between the download queue and the footer. Collapsed by default
+        so the extension reads as the canonical entry point; expanded state
+        persists in Settings as `paste_url_expanded`.
         """
-        paste_layout = QHBoxLayout()
+        container_layout = QVBoxLayout()
+        container_layout.setSpacing(0)
+        container_layout.setContentsMargins(0, 4, 0, 0)
+
+        self.paste_url_toggle = QWidget()
+        self.paste_url_toggle.setCursor(Qt.PointingHandCursor)
+        toggle_layout = QHBoxLayout(self.paste_url_toggle)
+        toggle_layout.setContentsMargins(2, 4, 0, 4)
+        toggle_layout.setSpacing(8)
+
+        self._paste_url_chevron = QLabel()
+        self._paste_url_chevron.setStyleSheet("color: #888; font-size: 14px; font-weight: bold;")
+        self._paste_url_chevron.setFixedWidth(18)
+        self._paste_url_chevron.setAlignment(Qt.AlignCenter | Qt.AlignVCenter)
+
+        self._paste_url_label = QLabel()
+        self._paste_url_label.setStyleSheet("color: #888; font-size: 12px;")
+        self._paste_url_label.setAlignment(Qt.AlignVCenter)
+
+        toggle_layout.addWidget(self._paste_url_chevron)
+        toggle_layout.addWidget(self._paste_url_label)
+        toggle_layout.addStretch()
+
+        # Clicks anywhere on the row toggle the disclosure
+        self.paste_url_toggle.mousePressEvent = lambda _e: self._toggle_paste_url_row()
+
+        self.paste_url_container = QWidget()
+        paste_layout = QHBoxLayout(self.paste_url_container)
         paste_layout.setContentsMargins(0, 4, 0, 0)
         paste_layout.setSpacing(6)
 
@@ -556,7 +593,26 @@ class MainWindow(QMainWindow):
 
         paste_layout.addWidget(self.paste_url_input, stretch=1)
         paste_layout.addWidget(self.paste_url_button)
-        parent_layout.addLayout(paste_layout)
+
+        container_layout.addWidget(self.paste_url_toggle)
+        container_layout.addWidget(self.paste_url_container)
+        parent_layout.addLayout(container_layout)
+
+        self._paste_url_expanded = self.settings.get('paste_url_expanded', False)
+        self._update_paste_url_disclosure()
+
+    def _toggle_paste_url_row(self):
+        self._paste_url_expanded = not self._paste_url_expanded
+        self.settings['paste_url_expanded'] = self._paste_url_expanded
+        Settings.save(self.settings)
+        self._update_paste_url_disclosure()
+        if self._paste_url_expanded:
+            self.paste_url_input.setFocus()
+
+    def _update_paste_url_disclosure(self):
+        self._paste_url_chevron.setText("▼" if self._paste_url_expanded else "▶")
+        self._paste_url_label.setText("Paste a URL")
+        self.paste_url_container.setVisible(self._paste_url_expanded)
 
     def _submit_pasted_url(self):
         """Route a pasted URL through classify and queue it for download."""
@@ -567,14 +623,19 @@ class MainWindow(QMainWindow):
         kind = classify_pasted_url(url)
 
         if kind == 'unsupported':
-            QMessageBox.information(
-                self,
-                "Can't auto-detect media at that URL",
-                "Couldn't determine what to download from this URL.\n\n"
-                "If you're trying to pick images from a webpage, use the "
-                "browser extension's \U0001F3DE️ Pick Images on the page "
-                "directly — page scanning needs the in-browser context."
+            msg = QMessageBox(self)
+            msg.setIcon(QMessageBox.Information)
+            msg.setWindowTitle("No media detected at that URL")
+            msg.setTextFormat(Qt.RichText)
+            msg.setText("<b>We couldn't find any media at this URL.</b>")
+            msg.setInformativeText(
+                "Some pages load videos only when you scroll or interact — "
+                "pasting a URL can't see those.<br><br>"
+                "To download from a page like this, open it in your browser "
+                "and use the extension's <b>Video Download</b> or "
+                "<b>Pick Images</b>."
             )
+            msg.exec_()
             return
 
         # Mirror the extension's payload shape so the existing add_download
