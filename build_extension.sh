@@ -8,8 +8,8 @@ set -e  # Exit on any error
 # Configuration
 EXTENSION_DIR="extension_minimal"
 BUILD_DIR="dist/extension"
-OUTPUT_NAME="media-downloader-connector-firefox"
-VERSION="1.0"
+OUTPUT_NAME="dlwithit-connector-firefox"
+VERSION="1.0.0"
 
 # Colors for output
 RED='\033[0;31m'
@@ -33,9 +33,9 @@ echo -e "${YELLOW}Creating build directory...${NC}"
 mkdir -p "$BUILD_DIR"
 
 # Clean previous builds
-if [ -f "$BUILD_DIR/${OUTPUT_NAME}-v${VERSION}.zip" ]; then
+if [ -f "$BUILD_DIR/${OUTPUT_NAME}-v${VERSION}.xpi" ]; then
     echo -e "${YELLOW}Removing previous build...${NC}"
-    rm "$BUILD_DIR/${OUTPUT_NAME}-v${VERSION}.zip"
+    rm "$BUILD_DIR/${OUTPUT_NAME}-v${VERSION}.xpi"
 fi
 
 # Copy extension files
@@ -51,10 +51,12 @@ rm "$BUILD_DIR/temp_extension/manifest.json.bak" 2>/dev/null || true
 echo -e "${YELLOW}Files to be included:${NC}"
 find "$BUILD_DIR/temp_extension" -type f -exec basename {} \; | sort
 
-# Create the zip file
-echo -e "${YELLOW}Creating distribution package...${NC}"
+# Create the .xpi file
+# An .xpi is a renamed zip with manifest.json at the archive root —
+# the format AMO accepts for submission and Firefox accepts for install.
+echo -e "${YELLOW}Creating distribution package (.xpi)...${NC}"
 cd "$BUILD_DIR/temp_extension"
-zip -r "../${OUTPUT_NAME}-v${VERSION}.zip" . -x "*.DS_Store" "*~" "*.bak" "*.tmp"
+zip -r "../${OUTPUT_NAME}-v${VERSION}.xpi" . -x "*.DS_Store" "*~" "*.bak" "*.tmp"
 cd - > /dev/null
 
 # Clean up temporary directory
@@ -62,21 +64,26 @@ rm -rf "$BUILD_DIR/temp_extension"
 
 # Verify the package
 echo -e "${YELLOW}Package contents:${NC}"
-unzip -l "$BUILD_DIR/${OUTPUT_NAME}-v${VERSION}.zip"
+unzip -l "$BUILD_DIR/${OUTPUT_NAME}-v${VERSION}.xpi"
 
 # Calculate file size
-FILESIZE=$(stat -f%z "$BUILD_DIR/${OUTPUT_NAME}-v${VERSION}.zip" 2>/dev/null || stat -c%s "$BUILD_DIR/${OUTPUT_NAME}-v${VERSION}.zip" 2>/dev/null)
+FILESIZE=$(stat -f%z "$BUILD_DIR/${OUTPUT_NAME}-v${VERSION}.xpi" 2>/dev/null || stat -c%s "$BUILD_DIR/${OUTPUT_NAME}-v${VERSION}.xpi" 2>/dev/null)
 FILESIZE_KB=$((FILESIZE / 1024))
 
 echo ""
 echo -e "${GREEN}✅ Extension built successfully!${NC}"
-echo -e "${GREEN}📦 Package: $BUILD_DIR/${OUTPUT_NAME}-v${VERSION}.zip${NC}"
+echo -e "${GREEN}📦 Package: $BUILD_DIR/${OUTPUT_NAME}-v${VERSION}.xpi${NC}"
 echo -e "${GREEN}📏 Size: ${FILESIZE_KB}KB${NC}"
 echo ""
 echo -e "${BLUE}Next steps:${NC}"
-echo "1. Install in Firefox by going to about:debugging"
-echo "2. Click 'This Firefox' → 'Load Temporary Add-on'"
-echo "3. Select the .zip file or extract and select manifest.json"
+echo "  Submit this .xpi to addons.mozilla.org for signing:"
+echo "    https://addons.mozilla.org/developers/addon/submit/"
 echo ""
-echo -e "${YELLOW}For permanent installation, the extension needs to be signed by Mozilla.${NC}"
-echo -e "${YELLOW}See Firefox_Extension_Installation.md for detailed instructions.${NC}"
+echo "  Once AMO returns a signed .xpi, that's the file the .pkg"
+echo "  installer drops onto end-user machines."
+echo ""
+echo -e "${YELLOW}Local-install testing before AMO signing:${NC}"
+echo "  Firefox Dev/ESR/Nightly: about:debugging → 'Load Temporary Add-on'"
+echo "  Firefox Release rejects unsigned .xpi files — AMO signing required."
+echo ""
+echo -e "${YELLOW}See Firefox_Extension_Installation.md for full details.${NC}"
