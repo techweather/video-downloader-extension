@@ -8,6 +8,20 @@ from version import __version__  # noqa: F401  (available for submodules)
 
 import sys
 import os
+
+# When running from a frozen PyInstaller .app bundle, prepend our
+# Contents/Frameworks/ directory to PATH. Bundled binaries (ffmpeg,
+# ffprobe, deno) live there, and external tools we shell out to —
+# in particular yt-dlp's `shutil.which('deno')` lookup for a JS
+# runtime — search PATH. The GUI session's PATH doesn't include any
+# location where we ship binaries, so without this they're invisible.
+# In dev this is a no-op; the user's terminal PATH already has them.
+if getattr(sys, 'frozen', False):
+    _frameworks_dir = os.path.abspath(
+        os.path.join(os.path.dirname(sys.executable), '..', 'Frameworks')
+    )
+    os.environ['PATH'] = _frameworks_dir + os.pathsep + os.environ.get('PATH', '')
+
 import json
 import requests
 import subprocess
