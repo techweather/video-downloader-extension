@@ -50,9 +50,13 @@ a = Analysis(
         # File/ provides File::RandomAccess, required by Image/ExifTool.pm.
         # The arch-specific darwin-thread-multi-2level folder (Brotli compression)
         # is skipped — Image::ExifTool and File::RandomAccess are 100% pure Perl.
-        ('/opt/homebrew/Cellar/exiftool/13.44_1/bin/exiftool', 'exiftool_bundle'),
-        ('/opt/homebrew/Cellar/exiftool/13.44_1/libexec/lib/perl5/Image', 'exiftool_bundle/lib/Image'),
-        ('/opt/homebrew/Cellar/exiftool/13.44_1/libexec/lib/perl5/File', 'exiftool_bundle/lib/File'),
+        # Use Homebrew's version-agnostic `opt` symlink (e.g.
+        # /opt/homebrew/opt/exiftool -> ../Cellar/exiftool/<version>) so
+        # routine `brew upgrade exiftool` bumps don't break the build.
+        # PyInstaller follows symlinks and copies the underlying files.
+        ('/opt/homebrew/opt/exiftool/bin/exiftool', 'exiftool_bundle'),
+        ('/opt/homebrew/opt/exiftool/libexec/lib/perl5/Image', 'exiftool_bundle/lib/Image'),
+        ('/opt/homebrew/opt/exiftool/libexec/lib/perl5/File', 'exiftool_bundle/lib/File'),
     ],
     hiddenimports=[
         # PyQt5
