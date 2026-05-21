@@ -125,13 +125,43 @@ codesign --force --deep --sign - "$STAGED_APP" 2>&1 | sed 's/^/    /' || {
 
 # === Build component packages =======================================
 say "Building component package: app"
+# pkgbuild defaults <BundleIsRelocatable> to true for .app bundles, which
+# tells the installer to update an existing bundle of the same ID wherever
+# it sits on disk (the "relocation" feature for shipping in-place updates).
+# That's catastrophic for a fresh install: if the user has dist/dlwithit.app
+# from a local build, the .pkg "updates" THAT path instead of installing to
+# /Applications. We always want /Applications, so disable relocation via a
+# component plist.
+COMPONENT_PLIST="$BUILD_DIR/dlwithit-app.plist"
+cat > "$COMPONENT_PLIST" <<'EOF'
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<array>
+    <dict>
+        <key>BundleHasStrictIdentifier</key>
+        <true/>
+        <key>BundleIsRelocatable</key>
+        <false/>
+        <key>BundleIsVersionChecked</key>
+        <true/>
+        <key>BundleOverwriteAction</key>
+        <string>upgrade</string>
+        <key>RootRelativeBundlePath</key>
+        <string>dlwithit.app</string>
+    </dict>
+</array>
+</plist>
+EOF
+
 pkgbuild \
     --root "$STAGING_APP_ROOT" \
     --identifier "$APP_BUNDLE_ID" \
     --version "$VERSION" \
     --install-location "/Applications" \
+    --component-plist "$COMPONENT_PLIST" \
     "$COMPONENTS_DIR/dlwithit-app.pkg"
-ok "dlwithit-app.pkg"
+ok "dlwithit-app.pkg (non-relocatable)"
 
 say "Building component package: firefox (nopayload, scripts only)"
 pkgbuild \
