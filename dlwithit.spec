@@ -23,13 +23,31 @@ def find_ffmpeg_tools():
     return ffmpeg_path, ffprobe_path
 
 
+def find_deno():
+    """Find the deno binary (JS runtime used by yt-dlp for some YouTube formats)."""
+    deno_path = shutil.which('deno')
+    if deno_path:
+        print(f"Found deno at: {deno_path}")
+    else:
+        print("Warning: deno not found on system! YouTube downloads will use yt-dlp's slower internal JS interpreter and some formats may be unavailable.")
+    return deno_path
+
+
 ffmpeg_binary, ffprobe_binary = find_ffmpeg_tools()
+deno_binary = find_deno()
 
 binaries = []
 if ffmpeg_binary:
     binaries.append((ffmpeg_binary, '.'))
 if ffprobe_binary:
     binaries.append((ffprobe_binary, '.'))
+if deno_binary:
+    # deno is ~157 MB on Apple Silicon — biggest single binary in the bundle.
+    # Worth it: yt-dlp uses it as a JS runtime to unlock YouTube formats that
+    # the slower internal interpreter can't handle. Bundled at the same
+    # Contents/Frameworks/ root as ffmpeg; native_app.py prepends that dir
+    # to PATH so yt-dlp's shutil.which('deno') finds it at runtime.
+    binaries.append((deno_binary, '.'))
 
 a = Analysis(
     ['native_app.py'],
