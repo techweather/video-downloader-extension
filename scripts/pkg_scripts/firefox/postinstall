@@ -1,0 +1,74 @@
+#!/bin/bash
+
+# Postinstall: open Firefox with the bundled .xpi so the user gets a
+# single "Add" confirmation. Runs as root after the .pkg drops files.
+#
+# Failure here must NOT fail the install — if Firefox isn't present
+# or the user closes the prompt, the .xpi is still on disk at the
+# path below and they can install it manually later. Always exit 0.
+
+set +e
+
+LOG_TAG="dlwithit-postinstall-firefox"
+log() { echo "[$LOG_TAG] $*"; }
+
+# Resolve the user running the install (not root — we need their session).
+CONSOLE_USER=$(stat -f "%Su" /dev/console)
+CONSOLE_UID=$(id -u "$CONSOLE_USER" 2>/dev/null || echo "")
+
+if [[ -z "$CONSOLE_USER" || "$CONSOLE_USER" == "root" || -z "$CONSOLE_UID" ]]; then
+    log "Could not resolve console user; skipping Firefox launch."
+    exit 0
+fi
+
+# Locate Firefox. Check the standard locations.
+FIREFOX_APP=""
+for candidate in \
+    "/Applications/Firefox.app" \
+    "/Applications/Firefox Developer Edition.app" \
+    "/Applications/Firefox Nightly.app" \
+    "$(eval echo ~$CONSOLE_USER)/Applications/Firefox.app"
+do
+    if [[ -d "$candidate" ]]; then
+        FIREFOX_APP="$candidate"
+        break
+    fi
+done
+
+if [[ -z "$FIREFOX_APP" ]]; then
+    log "Firefox not found in standard locations; skipping."
+    exit 0
+fi
+
+# The .xpi lives inside the installed app bundle.
+XPI_PATH="/Applications/dlwithit.app/Contents/Resources/extensions/firefox/dlwithit-connector-firefox-v1.0.0.xpi"
+
+if [[ ! -f "$XPI_PATH" ]]; then
+    log "Expected .xpi not found at $XPI_PATH; skipping."
+    exit 0
+fi
+
+log "Opening Firefox ($FIREFOX_APP) with $XPI_PATH for user $CONSOLE_USER (uid $CONSOLE_UID)."
+
+# Firefox has no OS-level handler for .xpi files, so `open -a Firefox path.xpi`
+# just opens Firefox without acting on the file. Passing the .xpi as a
+# file:// URL is the documented approach — Firefox navigates to the URL and
+# treats it as an install request, showing the standard "Add" prompt.
+#
+# Caveat: unsigned .xpi files are rejected by Firefox Release. AMO-signing
+# the .xpi (see PRIVACY.md + extension submission notes) is required for
+# Release-channel users; Dev/ESR/Nightly accept unsigned for local testing.
+#
+# launchctl asuser already runs in the user's launchd/GUI context — no
+# need for an extra `sudo -u` chain.
+#
+# Use `--args` to pass the file:// URL as a raw command-line argument
+# rather than going through macOS's URL-handler dispatch. The dispatch
+# path returns exit 1 from postinstall context (observed on macOS 14+),
+# while passing the URL as an arg lets Firefox parse it directly via
+# its own command-line URL handling.
+launchctl asuser "$CONSOLE_UID" /usr/bin/open -a "$FIREFOX_APP" --args "file://$XPI_PATH"
+RC=$?
+log "open exited with $RC"
+
+exit 0

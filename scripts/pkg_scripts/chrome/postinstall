@@ -1,0 +1,87 @@
+#!/bin/bash
+
+# Postinstall: open Chrome and walk the user into installing the
+# dlwithit extension. Runs as root after the .pkg drops files.
+#
+# Two modes:
+#   1. CHROME_CWS_URL set (post-CWS-publication) — opens the listing,
+#      user clicks "Add to Chrome" once. Done.
+#   2. CHROME_CWS_URL empty (current, pre-CWS-publication) — opens
+#      chrome://extensions AND reveals the bundled extension folder
+#      in Finder so the user can drag-load it after enabling dev mode.
+#
+# Once the Chrome Web Store submission goes live, set CHROME_CWS_URL
+# below to the listing URL and rebuild the .pkg.
+#
+# Failure here must NOT fail the install. Always exit 0.
+
+set +e
+
+# === FLIP THIS WHEN CWS GOES LIVE ===
+CHROME_CWS_URL=""
+# Example once published:
+# CHROME_CWS_URL="https://chromewebstore.google.com/detail/<extension-id>"
+# ====================================
+
+LOG_TAG="dlwithit-postinstall-chrome"
+log() { echo "[$LOG_TAG] $*"; }
+
+CONSOLE_USER=$(stat -f "%Su" /dev/console)
+CONSOLE_UID=$(id -u "$CONSOLE_USER" 2>/dev/null || echo "")
+
+if [[ -z "$CONSOLE_USER" || "$CONSOLE_USER" == "root" || -z "$CONSOLE_UID" ]]; then
+    log "Could not resolve console user; skipping Chrome launch."
+    exit 0
+fi
+
+CHROME_APP=""
+for candidate in \
+    "/Applications/Google Chrome.app" \
+    "/Applications/Google Chrome Canary.app" \
+    "/Applications/Chromium.app" \
+    "$(eval echo ~$CONSOLE_USER)/Applications/Google Chrome.app"
+do
+    if [[ -d "$candidate" ]]; then
+        CHROME_APP="$candidate"
+        break
+    fi
+done
+
+if [[ -z "$CHROME_APP" ]]; then
+    log "Chrome not found in standard locations; skipping."
+    exit 0
+fi
+
+EXT_FOLDER="/Applications/dlwithit.app/Contents/Resources/extensions/chrome"
+
+# launchctl asuser already runs in the user's launchd/GUI context — no
+# need for an extra `sudo -u` chain. Pass URLs via `--args` so Chrome
+# parses them directly via its command-line URL handling instead of
+# going through macOS's URL-handler dispatch (which gets ignored when
+# Chrome restores a previous session on launch from postinstall context).
+run_open_url() {
+    launchctl asuser "$CONSOLE_UID" /usr/bin/open -a "$CHROME_APP" --args "$1"
+    log "open --args $1 exited with $?"
+}
+
+if [[ -n "$CHROME_CWS_URL" ]]; then
+    log "Opening Chrome Web Store listing for user $CONSOLE_USER."
+    run_open_url "$CHROME_CWS_URL"
+else
+    log "CWS not yet published; opening chrome://extensions and revealing extension folder for load-unpacked install."
+    if [[ ! -d "$EXT_FOLDER" ]]; then
+        log "Expected extension folder not found at $EXT_FOLDER; skipping."
+        exit 0
+    fi
+    # Reveal the folder in Finder via osascript — `open -R` returns exit 0
+    # from postinstall context but Finder doesn't actually focus the folder.
+    # AppleScript's `reveal` does the right thing.
+    launchctl asuser "$CONSOLE_UID" /usr/bin/osascript \
+        -e "tell application \"Finder\" to reveal POSIX file \"$EXT_FOLDER\"" \
+        -e "tell application \"Finder\" to activate"
+    log "osascript Finder reveal exited with $?"
+    # Then open chrome://extensions.
+    run_open_url "chrome://extensions"
+fi
+
+exit 0
