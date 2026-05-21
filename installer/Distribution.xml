@@ -2,6 +2,7 @@
 <installer-gui-script minSpecVersion="2">
     <title>dlwithit</title>
     <organization>com.dlwithit</organization>
+    <domains enable_localSystem="true"/>
 
     <welcome    file="welcome.html"    mime-type="text/html"/>
     <conclusion file="conclusion.html" mime-type="text/html"/>
