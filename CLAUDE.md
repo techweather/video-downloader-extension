@@ -200,3 +200,25 @@ The goal is to make it genuinely useful and shareable — not a polished commerc
 ---
 
 *Keep this file lean. Update priorities section when the Things list changes significantly.*
+
+---
+
+## Queued feature — Apple.com marketing-page media extraction (added 2026-07-25)
+
+New capability set so dlwithit can extract motion/media from Apple product "overview" pages (`macbook-neo`, `imac`, `mac-mini`, `mac-studio`, `mac/mac-does-that`) that the generic scraper misses: `blob:` video srcs, JS-constructed CDN URLs, transparent `.mov`/`.webm`, canvas image-sequence flipbooks, and HLS `.m3u8` films.
+
+Full self-contained plan (content types, recipes, task breakdown **A–F**, acceptance criteria, re-derivation commands):
+- Repo: `APPLE_EXTRACTION_PLAN.md`
+- Obsidian: `01_Projects/dlwithit/Apple.com Media Extraction — Implementation Plan.md`
+
+Scope: **A/B/C/F** are the in-scope "Apple support" set for the current dev version; **D** (canvas flipbooks) and **E** (HLS discovery) are flagged stretch. Tracked in Things under 👾 dlwithit → "Apple.com marketing-page media extraction" (tag **Next**).
+
+---
+
+## ~~Queued fix — Video scan progress + double-run/duplicate guard~~ (done 2026-08-03)
+
+Shipped via `video-scan-guard`. Per-tab `scanningTabs` guard in `triggerCombinedVideoDownload()` in both extensions (a second trigger now shows "Still scanning this page…" instead of starting a parallel scan); an in-page `#__dlwithit_scan_banner` shows "Scanning page for videos…" during the DOM scan — the scan runs in the page, so app-side status couldn't represent it. New `core/media_list.py` (`normalize_media_url` / `dedupe_videos` / `merge_video_lists`) mirrored by `dedupeVideos()` in both `background.js`; extensions dedupe before sending `video-list`, the app dedupes on receipt. `handle_video_list` keeps `_open_video_dialogs` keyed by pageUrl so a second scan merges into the open picker and raises it rather than stacking a dialog on `exec_()`'s nested event loop. 31 new tests, unit suite at 163 passing.
+
+**⚠️ Not yet verified live on a video-heavy page** — repro is andrewsiner.com; needs a reload of both unpacked extensions and a manual double-trigger to confirm one deduped picker.
+
+Deliberately skipped: parallelizing the per-video probes (the scan's real cost is the `querySelectorAll('*')` attribute sweep, not network).
