@@ -27,9 +27,10 @@ from core.updater import get_ytdlp_version, VersionCheckWorker, InstallUpdateWor
 from core.app_updater import AppVersionCheckWorker, is_newer, notify_update_available
 from core.macos import set_dock_visible, set_launch_at_login, refresh_dock_icon
 from core.url_router import classify_pasted_url
+from core.media_list import dedupe_videos
 from ui.components.download_item import DownloadItem
 from ui.components.video_selector import VideoSelectorDialog
-from ui.window_utils import bring_window_to_front
+from ui.window_utils import bring_window_to_front, bring_dialog_to_front
 
 
 class MainWindow(QMainWindow):
@@ -59,6 +60,7 @@ class MainWindow(QMainWindow):
         self.download_items = {}
         self.settings = Settings.load()
         self._first_download_received = False  # Track first download for bring-to-front
+        self._open_video_dialogs = {}  # pageUrl -> open VideoSelectorDialog
 
         # Apply Dock visibility from saved setting before any UI work.
         set_dock_visible(not self.settings.get('hide_from_dock', False))
@@ -874,17 +876,29 @@ class MainWindow(QMainWindow):
         # Mark first download received (dialog's showEvent handles bring-to-front)
         self._first_download_received = True
 
-        
+        page_url = data['pageUrl']
+        videos = dedupe_videos(data['videos'])
+
+        # A picker already open for this page absorbs the new results rather than
+        # stacking a second dialog — exec_() runs a nested event loop, so a
+        # re-triggered scan would otherwise land right on top of the first.
+        existing = self._open_video_dialogs.get(page_url)
+        if existing is not None:
+            existing.add_videos(videos)
+            bring_dialog_to_front(existing, self)
+            return
+
         try:
             # Show video selector dialog
             dialog = VideoSelectorDialog(
-                data['videos'],
+                videos,
                 data['pageTitle'],
-                data['pageUrl'],
+                page_url,
                 self
             )
-            
-            
+            self._open_video_dialogs[page_url] = dialog
+
+
             if dialog.exec_():
                 selected = dialog.get_selected_videos()
                 
@@ -965,7 +979,9 @@ class MainWindow(QMainWindow):
             print(f"[ERROR] Failed to show video dialog: {e}")
             import traceback
             traceback.print_exc()
-    
+        finally:
+            self._open_video_dialogs.pop(page_url, None)
+
     def handle_playlist_detected(self, download_id, playlist_data):
         """
         Handle playlist detected by yt-dlp during download.

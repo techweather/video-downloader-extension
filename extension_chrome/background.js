@@ -405,7 +405,73 @@ function domScanForVideos() {
 // 3. If not, classify the URL via /classify
 // 4. If supported by yt-dlp, send as video
 // 5. If not, run DOM scan as last resort
+// Collapse a scraped video list by normalized URL, keeping first-seen order —
+// earlier scan passes carry better titles and thumbnails than the later regex ones.
+// Mirrors core/media_list.py on the app side.
+function dedupeVideos(videos) {
+  if (!videos || !videos.length) return [];
+  const seen = new Set();
+  const unique = [];
+  for (const video of videos) {
+    if (!video || !video.url) continue;
+    let key = video.url.trim();
+    try {
+      const u = new URL(key);
+      u.hash = '';
+      key = u.href;
+    } catch (e) {
+      // blob:/data:/relative — compare the raw string
+    }
+    if (seen.has(key)) continue;
+    seen.add(key);
+    unique.push(video);
+  }
+  return unique;
+}
+
+// Tabs with a page scan in flight. Guards against a second context-menu click
+// or shortcut press launching a parallel scan and doubling the video list.
+const scanningTabs = new Set();
+
+// Show/update/remove the in-page "Scanning…" banner. The scan runs in the page,
+// so the feedback has to live there too — the app doesn't know a scan started.
+function setScanBanner(tabId, text) {
+  chrome.scripting.executeScript({
+    target: { tabId },
+    func: (bannerText) => {
+      const id = '__dlwithit_scan_banner';
+      let el = document.getElementById(id);
+      if (bannerText === null) { if (el) el.remove(); return; }
+      if (!el) {
+        el = document.createElement('div');
+        el.id = id;
+        el.style.cssText = 'position:fixed;bottom:20px;left:50%;transform:translateX(-50%);' +
+          'background:#2d2d2d;color:#e0e0e0;padding:12px 20px;border-radius:8px;' +
+          'font:13px -apple-system,BlinkMacSystemFont,sans-serif;z-index:2147483647;' +
+          'box-shadow:0 4px 16px rgba(0,0,0,0.4);border:1px solid #404040;pointer-events:none;';
+        document.body.appendChild(el);
+      }
+      el.textContent = bannerText;
+    },
+    args: [text]
+  }).catch(() => {});  // Banner is cosmetic — never let it break the scan.
+}
+
 async function triggerCombinedVideoDownload(tab) {
+  if (scanningTabs.has(tab.id)) {
+    setScanBanner(tab.id, 'Still scanning this page…');
+    return;
+  }
+  scanningTabs.add(tab.id);
+  try {
+    await runCombinedVideoDownload(tab);
+  } finally {
+    scanningTabs.delete(tab.id);
+    setScanBanner(tab.id, null);
+  }
+}
+
+async function runCombinedVideoDownload(tab) {
   let results;
   try {
     results = await chrome.scripting.executeScript({
@@ -478,6 +544,7 @@ async function triggerCombinedVideoDownload(tab) {
     }, tab.id);
   } else {
     // DOM scan — last resort
+    setScanBanner(tab.id, 'Scanning page for videos…');
     let scanResults;
     try {
       scanResults = await chrome.scripting.executeScript({
@@ -489,6 +556,7 @@ async function triggerCombinedVideoDownload(tab) {
     }
 
     const scan = (scanResults && scanResults[0] && scanResults[0].result) || { videos: [], blobVideoCount: 0 };
+    scan.videos = dedupeVideos(scan.videos);
     if (scan.videos.length === 0) {
       let msg = 'No downloadable videos found on this page.';
       if (scan.blobVideoCount > 0) {

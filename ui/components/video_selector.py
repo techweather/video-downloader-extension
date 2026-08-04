@@ -11,6 +11,7 @@ from PyQt5.QtWidgets import (QDialog, QVBoxLayout, QHBoxLayout, QLabel,
                              QPushButton, QAbstractItemView)
 from PyQt5.QtCore import Qt
 
+from core.media_list import dedupe_videos, merge_video_lists
 from ui.window_utils import bring_dialog_to_front
 
 
@@ -53,7 +54,9 @@ class VideoSelectorDialog(QDialog):
 
     def __init__(self, videos, page_title, page_url, parent=None):
         super().__init__(parent)
-        self.videos = videos
+        # Own the list — add_videos() mutates it, and the same scan can reach
+        # here with the same entry found via several selectors.
+        self.videos = dedupe_videos(videos)
         self.page_title = page_title
         self.page_url = page_url
         self.checkboxes = []
@@ -76,10 +79,10 @@ class VideoSelectorDialog(QDialog):
         layout.setSpacing(12)
 
         # Header
-        count = len(videos)
-        count_label = QLabel(f"Found <b>{count}</b> video{'s' if count != 1 else ''}")
-        count_label.setStyleSheet("color: #e0e0e0; font-size: 14px;")
-        layout.addWidget(count_label)
+        self.count_label = QLabel()
+        self.count_label.setStyleSheet("color: #e0e0e0; font-size: 14px;")
+        self._refresh_count_label()
+        layout.addWidget(self.count_label)
 
         url_label = QLabel(page_url)
         url_label.setWordWrap(True)
@@ -124,7 +127,7 @@ class VideoSelectorDialog(QDialog):
             QScrollBar::sub-page:vertical { background: none; }
         """)
 
-        for i, video in enumerate(videos):
+        for i, video in enumerate(self.videos):
             self._create_video_item(i, video)
 
         layout.addWidget(self.list_widget)
@@ -161,6 +164,30 @@ class VideoSelectorDialog(QDialog):
     def showEvent(self, event):
         super().showEvent(event)
         bring_dialog_to_front(self, self.parent())
+
+    def _refresh_count_label(self):
+        """Re-render the 'Found N videos' header from the current list."""
+        count = len(self.videos)
+        self.count_label.setText(
+            f"Found <b>{count}</b> video{'s' if count != 1 else ''}"
+        )
+
+    def add_videos(self, new_videos):
+        """Append videos a later scan turned up, skipping ones already listed.
+
+        Lets a re-triggered scan feed the open picker instead of stacking a
+        second dialog on top of it. Returns the number actually added.
+        """
+        merged, added = merge_video_lists(self.videos, new_videos)
+        if not added:
+            return 0
+
+        for video in added:
+            self._create_video_item(len(self.videos), video)
+            self.videos.append(video)
+
+        self._refresh_count_label()
+        return len(added)
 
     def _create_video_item(self, index, video):
         """Create a single video item widget."""

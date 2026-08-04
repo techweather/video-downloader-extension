@@ -242,7 +242,69 @@ function detectVideoEmbeds() {
 // 3. If none found, classify the URL
 // 4. If supported by yt-dlp, send to /download as type 'video'
 // 5. If not supported, fall back to DOM scan
+// Collapse a scraped video list by normalized URL, keeping first-seen order —
+// earlier scan passes carry better titles and thumbnails than the later regex ones.
+// Mirrors core/media_list.py on the app side.
+function dedupeVideos(videos) {
+  if (!videos || !videos.length) return [];
+  const seen = new Set();
+  const unique = [];
+  for (const video of videos) {
+    if (!video || !video.url) continue;
+    let key = video.url.trim();
+    try {
+      const u = new URL(key);
+      u.hash = '';
+      key = u.href;
+    } catch (e) {
+      // blob:/data:/relative — compare the raw string
+    }
+    if (seen.has(key)) continue;
+    seen.add(key);
+    unique.push(video);
+  }
+  return unique;
+}
+
+// Tabs with a page scan in flight. Guards against a second context-menu click
+// or shortcut press launching a parallel scan and doubling the video list.
+const scanningTabs = new Set();
+
+// Show/update/remove the in-page "Scanning…" banner. The scan runs in the page,
+// so the feedback has to live there too — the app doesn't know a scan started.
+function setScanBanner(tabId, text) {
+  browser.tabs.executeScript(tabId, {
+    code: `
+      (function() {
+        var id = '__dlwithit_scan_banner';
+        var el = document.getElementById(id);
+        var text = ${JSON.stringify(text)};
+        if (text === null) { if (el) el.remove(); return; }
+        if (!el) {
+          el = document.createElement('div');
+          el.id = id;
+          el.style.cssText = 'position:fixed;bottom:20px;left:50%;transform:translateX(-50%);' +
+            'background:#2d2d2d;color:#e0e0e0;padding:12px 20px;border-radius:8px;' +
+            'font:13px -apple-system,BlinkMacSystemFont,sans-serif;z-index:2147483647;' +
+            'box-shadow:0 4px 16px rgba(0,0,0,0.4);border:1px solid #404040;pointer-events:none;';
+          document.body.appendChild(el);
+        }
+        el.textContent = text;
+      })();
+    `
+  }, function() {
+    // Banner is cosmetic — a page that blocks injection shouldn't break the scan.
+    if (browser.runtime.lastError) return;
+  });
+}
+
 function triggerCombinedVideoDownload(tab) {
+  if (scanningTabs.has(tab.id)) {
+    setScanBanner(tab.id, 'Still scanning this page…');
+    return;
+  }
+  scanningTabs.add(tab.id);
+
   browser.tabs.executeScript(tab.id, {
     code: `
       (function() {
@@ -288,6 +350,7 @@ function triggerCombinedVideoDownload(tab) {
     `
   }, function(results) {
     if (browser.runtime.lastError) {
+      scanningTabs.delete(tab.id);
       return;
     }
 
@@ -298,6 +361,7 @@ function triggerCombinedVideoDownload(tab) {
 
     if (videoEmbeds.length >= 1) {
       // Platform embeds found — replicate triggerVideoDownload behaviour exactly
+      scanningTabs.delete(tab.id);
       if (videoEmbeds.length >= 2) {
         const detectedVideos = videoEmbeds.map(video => ({
           id: video.id,
@@ -338,6 +402,7 @@ function triggerCombinedVideoDownload(tab) {
       .then(response => response.json())
       .then(classified => {
         if (classified.supported) {
+          scanningTabs.delete(tab.id);
           sendToNativeApp({
             type: 'video',
             url: pageUrl,
@@ -347,6 +412,7 @@ function triggerCombinedVideoDownload(tab) {
             source: pageData.source || new URL(pageUrl).hostname
           });
         } else {
+          setScanBanner(tab.id, 'Scanning page for videos…');
           browser.tabs.executeScript(tab.id, {
             code: `
               (function() {
@@ -646,6 +712,8 @@ function triggerCombinedVideoDownload(tab) {
               })();
             `
           }, function() {
+            scanningTabs.delete(tab.id);
+            setScanBanner(tab.id, null);
             if (browser.runtime.lastError) {
               console.error('Script injection error:', browser.runtime.lastError);
             }
@@ -653,6 +721,8 @@ function triggerCombinedVideoDownload(tab) {
         }
       })
       .catch(async () => {
+        scanningTabs.delete(tab.id);
+        setScanBanner(tab.id, null);
         await tryLaunchApp();
         alert('Launching dlwithit app. Please try the download again in a few seconds.');
       });
@@ -707,11 +777,12 @@ browser.runtime.onMessage.addListener((message, sender) => {
     });
   }
   else if (message.action === "videos-found") {
-    
-    // Send to native app
+
+    // Send to native app, deduped — the scan finds the same file through
+    // several selectors (<video src>, its <source>, data-*, inline script).
     sendToNativeApp({
       type: 'video-list',
-      videos: message.videos,
+      videos: dedupeVideos(message.videos),
       pageTitle: message.pageTitle,
       pageUrl: message.pageUrl,
       source: new URL(message.pageUrl).hostname
