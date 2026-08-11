@@ -564,12 +564,18 @@ async function runCombinedVideoDownload(tab) {
       } else {
         msg += '\nThe page may use a different video delivery method or videos may not be loaded yet.';
       }
-      // Clear the scanning banner first — alert() blocks the page, so the
-      // finally-block cleanup can't run until the user dismisses it.
-      setScanBanner(tab.id, null);
+      // Drop the banner and let the browser paint one frame before alerting.
+      // Removing it and calling alert() in the same tick leaves the banner on
+      // screen: the element is gone from the DOM, but the modal blocks the
+      // repaint that would erase it. Done inside this one injection so it can't
+      // race with the finally-block cleanup.
       chrome.scripting.executeScript({
         target: { tabId: tab.id },
-        func: (message) => alert(message),
+        func: (message) => {
+          const banner = document.getElementById('__dlwithit_scan_banner');
+          if (banner) banner.remove();
+          setTimeout(() => alert(message), 60);
+        },
         args: [msg]
       }).catch(() => {});
     } else {
