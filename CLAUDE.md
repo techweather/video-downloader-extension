@@ -238,3 +238,13 @@ The duplicated playlist-detection block is now one `_emit_playlist_if_multi()` m
 **Verified**: on the real repro page, one pass → picker with 12 videos and correct titles. **Not yet verified**: the end-to-end wall-clock improvement through the extension in a browser, and the "Reading video N of M" label appearing in the UI.
 
 **Still open (deliberate)**: `extract_flat='in_playlist'` returns the same 12 entries in **0.4s vs 8.8s**, but with `title: None`. Worth doing if the wait is still too long — it needs titles backfilled from the extension's iframe scrape, or the picker shown immediately and titles filled in as they resolve.
+
+**Follow-up fix (2026-08-10, `skip-data-uris`)**: page themes ship a tiny base64 placeholder as a `<video src>` to prime the player (andrewsiner.com's is 2×2, 4 frames). The scan treated it as real, so running Video Download near the top of the page gave a bogus "Found 1 video" picker, and downloading it crashed with `InvalidSchema` — `requests` has no adapter for `data:`. `resolveUrl()` now returns null for `data:` in both extensions (covers every scan pass at once); `core/media_list.is_fetchable_media_url()` is the app-side backstop. Confirmed fixed live. Unit suite at 200.
+
+### ⚠️ Site behaviour worth remembering
+
+**On pages with embedded players (Vimeo/YouTube iframes), right-clicking the video gives you the *player's* context menu, not the browser's** — so the extension's menu items are unreachable there. The user must right-click off the player frame, or use the keyboard shortcut (Firefox ⌘F1/⌘F2, Chrome ⌘⌃1/⌘⌃2).
+
+Two consequences:
+- Any feature keyed on "which element did you right-click" is a dead end for exactly the multi-embed pages that need it most. A viewport-prominence hint is the only workable signal — see the Things item.
+- **For the demo video**: the right-click beat cannot be shot on a page with an embedded player. Either shoot right-click on a page with a plain `<video>`/image, or lead with the keyboard shortcut. This makes the shortcut shot more load-bearing than originally scripted.
