@@ -432,6 +432,10 @@ function triggerCombinedVideoDownload(tab) {
 
                   function resolveUrl(url) {
                     if (!url) return null;
+                    // Themes ship a tiny base64 placeholder as a <video src> to
+                    // prime the player. It isn't media anyone wants, and the app
+                    // downloads over HTTP so it can't fetch a data: URI anyway.
+                    if (/^data:/i.test(url.trim())) return null;
                     try {
                       return new URL(url, window.location.href).href;
                     } catch {
