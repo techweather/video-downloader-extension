@@ -50,8 +50,22 @@ def normalize_media_url(url):
     return urlunsplit((scheme, netloc, path, parts.query, ''))
 
 
+def is_fetchable_media_url(url):
+    """False for URLs the downloader has no way to retrieve over the network.
+
+    `data:` URIs are the case that actually turns up: page themes ship a tiny
+    base64 placeholder as a <video src> to prime the player. It looks like a
+    video to the scan, but requests has no adapter for the scheme, so picking it
+    raises InvalidSchema. The extensions filter these out too — this is the
+    backstop for an older extension build talking to a newer app.
+    """
+    if not url or not isinstance(url, str):
+        return False
+    return not url.strip().lower().startswith('data:')
+
+
 def dedupe_videos(videos):
-    """Drop duplicate entries from a scraped video list, keeping first-seen order.
+    """Drop duplicate and unfetchable entries, keeping first-seen order.
 
     The first occurrence wins because earlier scan passes carry richer metadata
     (a real title and thumbnail) than the later regex-based passes.
@@ -64,6 +78,9 @@ def dedupe_videos(videos):
 
     for video in videos:
         if not isinstance(video, dict):
+            continue
+
+        if not is_fetchable_media_url(video.get('url')):
             continue
 
         key = normalize_media_url(video.get('url'))

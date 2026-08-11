@@ -7,7 +7,8 @@ through several selectors, and a double-triggered scan sending the list twice.
 
 import pytest
 
-from core.media_list import normalize_media_url, dedupe_videos, merge_video_lists
+from core.media_list import (normalize_media_url, dedupe_videos, merge_video_lists,
+                             is_fetchable_media_url)
 
 
 def v(url, title=None, thumbnail=None):
@@ -148,3 +149,43 @@ class TestMergeVideoLists:
         existing = [v('https://e.com/a.mp4')]
         merge_video_lists(existing, [v('https://e.com/b.mp4')])
         assert len(existing) == 1
+
+
+class TestUnfetchableUrls:
+    """Page themes ship a base64 placeholder as a <video src>; picking it used
+    to crash the downloader with InvalidSchema (no requests adapter for data:)."""
+
+    PLACEHOLDER = 'data:video/mp4;base64,AAAAIGZ0eXBpc29tAAACAGlzb21pc28yYXZjMW1wNDE='
+
+    def test_data_uri_is_not_fetchable(self):
+        assert is_fetchable_media_url(self.PLACEHOLDER) is False
+
+    def test_uppercase_scheme_is_caught(self):
+        assert is_fetchable_media_url('DATA:video/mp4;base64,AAAA') is False
+
+    def test_leading_whitespace_is_caught(self):
+        assert is_fetchable_media_url('   data:video/mp4;base64,AAAA') is False
+
+    def test_http_urls_are_fetchable(self):
+        assert is_fetchable_media_url('https://e.com/a.mp4') is True
+        assert is_fetchable_media_url('http://e.com/a.mp4') is True
+
+    @pytest.mark.parametrize('bad', [None, '', 123, [], {}])
+    def test_unusable_input_is_not_fetchable(self, bad):
+        assert is_fetchable_media_url(bad) is False
+
+    def test_dedupe_drops_the_placeholder(self):
+        videos = [v(self.PLACEHOLDER, title='VFX SUPERVISOR'), v('https://e.com/a.mp4')]
+        result = dedupe_videos(videos)
+
+        assert [x['url'] for x in result] == ['https://e.com/a.mp4']
+
+    def test_a_page_of_only_placeholders_yields_nothing(self):
+        """This is what produced the bogus 'Found 1 video' picker."""
+        assert dedupe_videos([v(self.PLACEHOLDER)]) == []
+
+    def test_merge_never_adds_a_placeholder(self):
+        merged, added = merge_video_lists([v('https://e.com/a.mp4')], [v(self.PLACEHOLDER)])
+
+        assert added == []
+        assert len(merged) == 1
