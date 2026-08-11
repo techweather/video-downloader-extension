@@ -247,4 +247,4 @@ The duplicated playlist-detection block is now one `_emit_playlist_if_multi()` m
 
 Two consequences:
 - Any feature keyed on "which element did you right-click" is a dead end for exactly the multi-embed pages that need it most. A viewport-prominence hint is the only workable signal — see the Things item.
-- **For the demo video**: the right-click beat cannot be shot on a page with an embedded player. Either shoot right-click on a page with a plain `<video>`/image, or lead with the keyboard shortcut. This makes the shortcut shot more load-bearing than originally scripted.
+- **This is a documentation problem, not a workflow problem.** Right-click stays the primary taught path in both READMEs and the demo video — most people reach for it and don't use shortcuts. The instruction to add is simply *"on a page with an embedded player, right-click just outside the player frame — right-clicking the video itself opens the player's own menu."* The keyboard shortcut is presented second, as the faster way once you know it. Do **not** restructure the docs or the demo around the shortcut (considered and rejected, Sean, 2026-08-10).
