@@ -1206,6 +1206,13 @@ class MainWindow(QMainWindow):
             elif status.startswith('embedding'):
                 widget.status_label.setText("Embedding...")
                 widget.status_label.setStyleSheet("color: #16a085;")
+            else:
+                # Anything else is a human-readable progress phrase from the
+                # worker — "Preparing...", "Reading video 4 of 12...",
+                # "Retrying with direct URL...". Show it rather than dropping it;
+                # these are exactly the moments a long wait looks like a freeze.
+                widget.status_label.setText(status[:1].upper() + status[1:])
+                widget.status_label.setStyleSheet("color: #5ab0ff;")
     
     def download_finished(self, download_id, path):
         """Handle download completion"""

@@ -701,11 +701,13 @@ function triggerCombinedVideoDownload(tab) {
                     } else {
                       msg += '\\nThe page may use a different video delivery method or videos may not be loaded yet.';
                     }
-                    // Clear the scanning banner first — alert() blocks this script,
-                    // so the background page can't remove it until we return.
+                    // Drop the scanning banner and let the browser paint one frame
+                    // before alerting. Removing it and calling alert() in the same
+                    // tick leaves the banner on screen: the element is gone from the
+                    // DOM, but the modal blocks the repaint that would erase it.
                     var banner = document.getElementById('__dlwithit_scan_banner');
                     if (banner) banner.remove();
-                    alert(msg);
+                    setTimeout(function() { alert(msg); }, 60);
                   } else {
                     sendVideosToBackground(videos, document.title, window.location.href);
                   }

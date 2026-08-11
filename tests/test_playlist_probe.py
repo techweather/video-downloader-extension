@@ -181,3 +181,63 @@ class TestPlaylistDetection:
             {'id': 'a', 'url': 'https://andrewsiner.com/main/'}, info)
 
         assert self.emitted[0][1]['source'] == 'andrewsiner.com'
+
+
+class TestStatusLabelRouting:
+    """update_status used to drop any phrase it didn't recognise, which is why
+    'Preparing...' and 'Reading video N of M...' never reached the UI."""
+
+    @pytest.fixture
+    def window(self):
+        from PyQt5.QtWidgets import QApplication
+        app = QApplication.instance() or QApplication([])
+        from ui.main_window import MainWindow
+        w = MainWindow.__new__(MainWindow)  # skip __init__; we only exercise routing
+
+        class FakeLabel:
+            def __init__(self): self.text = None
+            def setText(self, t): self.text = t
+            def setStyleSheet(self, s): pass
+
+        class FakeBar:
+            def setValue(self, v): pass
+
+        class FakeWidget:
+            def __init__(self):
+                self.status_label = FakeLabel()
+                self.progress_bar = FakeBar()
+            def set_downloading(self): pass
+            def set_encoding(self): pass
+            def load_thumbnail(self, url): self.thumb = url
+
+        self.widget = FakeWidget()
+        w.download_items = {'d1': {'widget': self.widget}}
+        return w
+
+    def test_freeform_phrase_is_shown(self, window):
+        window.update_status('d1', 'Reading video 4 of 12...')
+        assert self.widget.status_label.text == 'Reading video 4 of 12...'
+
+    def test_lowercase_phrase_is_capitalised(self, window):
+        window.update_status('d1', 'adding metadata...')
+        assert self.widget.status_label.text == 'Adding metadata...'
+
+    def test_preparing_reaches_the_label(self, window):
+        window.update_status('d1', 'Preparing...')
+        assert self.widget.status_label.text == 'Preparing...'
+
+    def test_known_sentinels_keep_their_wording(self, window):
+        window.update_status('d1', 'downloading')
+        assert self.widget.status_label.text == 'Downloading...'
+        window.update_status('d1', 'encoding')
+        assert self.widget.status_label.text == 'Converting to MP4...'
+        window.update_status('d1', 'merging')
+        assert self.widget.status_label.text == 'Merging...'
+
+    def test_thumbnail_is_not_shown_as_text(self, window):
+        window.update_status('d1', 'thumbnail:https://example.com/t.jpg')
+        assert self.widget.status_label.text is None
+        assert self.widget.thumb == 'https://example.com/t.jpg'
+
+    def test_unknown_download_id_is_ignored(self, window):
+        window.update_status('nope', 'Reading video 1 of 3...')  # must not raise
