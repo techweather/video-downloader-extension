@@ -564,6 +564,9 @@ async function runCombinedVideoDownload(tab) {
       } else {
         msg += '\nThe page may use a different video delivery method or videos may not be loaded yet.';
       }
+      // Clear the scanning banner first — alert() blocks the page, so the
+      // finally-block cleanup can't run until the user dismisses it.
+      setScanBanner(tab.id, null);
       chrome.scripting.executeScript({
         target: { tabId: tab.id },
         func: (message) => alert(message),

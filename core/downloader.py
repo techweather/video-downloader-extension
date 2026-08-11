@@ -46,13 +46,20 @@ def _detect_image_extension(filepath):
     return None
 
 
+# yt-dlp logs one of these per entry while it walks a playlist, whatever the
+# extractor is — the only reliable progress signal during a multi-video extract.
+_PLAYLIST_ITEM_RE = re.compile(r'^\[download\] Downloading item (\d+) of (\d+)')
+
+
 class YtDlpLogger:
     """Custom logger to capture yt-dlp messages, including skip notifications."""
 
-    def __init__(self):
+    def __init__(self, progress_callback=None):
         self.skipped = False
         self.skip_reason = None
         self.skipped_filename = None
+        # Called with (index, total) as yt-dlp resolves each entry of a playlist.
+        self.progress_callback = progress_callback
 
     def debug(self, msg):
         # Capture "already downloaded" messages
@@ -65,6 +72,18 @@ class YtDlpLogger:
                 parts = msg.split(' has already been downloaded')
                 if parts:
                     self.skipped_filename = parts[0].replace('[download]', '').strip()
+            return
+
+        # Report progress while a page's embedded videos are being resolved. A
+        # portfolio page with a dozen Vimeo embeds takes a while here, and
+        # without this the row just reads "Starting..." and looks frozen.
+        if self.progress_callback:
+            match = _PLAYLIST_ITEM_RE.match(msg)
+            if match:
+                try:
+                    self.progress_callback(int(match.group(1)), int(match.group(2)))
+                except Exception:
+                    pass  # Progress reporting must never break a download.
 
     def warning(self, msg):
         pass
@@ -593,7 +612,89 @@ class DownloadWorker(QThread):
         )
         
         return True
-    
+
+    def _emit_playlist_if_multi(self, download, info):
+        """Show the video picker if `info` turned out to hold several videos.
+
+        A page with a dozen embedded Vimeo players comes back from yt-dlp as a
+        playlist. When that happens we don't download anything — we hand the
+        list to the user and let them choose. Returns True if the picker was
+        raised, meaning the caller should stop working on this download.
+        """
+        if download.get('skip_playlist_detection'):
+            return False
+        if info.get('_type') != 'playlist' or len(info.get('entries', [])) <= 1:
+            return False
+
+        entries = info.get('entries', [])
+
+        # Add 1-based index to each entry for playlist_items support
+        for i, entry in enumerate(entries):
+            if entry:  # Some entries might be None for unavailable videos
+                entry['playlist_index'] = i + 1  # yt-dlp uses 1-based indexing
+
+        # Format playlist entries for video selector
+        videos = []
+        for entry in entries:
+            if not entry:  # Some entries might be None for unavailable videos
+                continue
+
+            # For Instagram, prioritize webpage_url to avoid CDN URLs causing long filenames
+            # For Vimeo, prioritize url (embed URL with ?h= hash for private videos)
+            if entry.get('ie_key') == 'Instagram' or 'instagram.com' in str(entry.get('webpage_url', '')):
+                entry_url = (entry.get('webpage_url') or
+                             entry.get('url') or
+                             entry.get('original_url'))
+            else:
+                entry_url = (entry.get('url') or
+                             entry.get('webpage_url') or
+                             entry.get('original_url'))
+
+            # Clean smuggled data but preserve query parameters like ?h=
+            if entry_url and '#__youtubedl_smuggle=' in entry_url:
+                entry_url = entry_url.split('#__youtubedl_smuggle=')[0]
+
+            # Fix malformed URLs with double question marks
+            if entry_url and '?' in entry_url:
+                parts = entry_url.split('?')
+                if len(parts) > 2:
+                    # Keep first ?, replace subsequent ? with &
+                    entry_url = parts[0] + '?' + '&'.join(parts[1:])
+
+            if not entry_url:
+                # Fallback: construct URL based on platform
+                if entry.get('ie_key') == 'Vimeo':
+                    entry_url = f"https://vimeo.com/{entry.get('id', '')}"
+                elif entry.get('ie_key') == 'Youtube':
+                    entry_url = f"https://www.youtube.com/watch?v={entry.get('id', '')}"
+                elif entry.get('ie_key') == 'Instagram':
+                    # For Instagram, we need the post URL format
+                    entry_url = f"https://instagram.com/p/{entry.get('id', '')}"
+                else:
+                    entry_url = entry.get('id', 'Unknown')
+
+            title = entry.get('title') or f"Video {len(videos) + 1}"
+            videos.append({
+                'url': entry_url,
+                'title': title,
+                'thumbnail': entry.get('thumbnail'),
+                'duration': entry.get('duration'),
+                'uploader': entry.get('uploader'),
+                'original_title': title,
+                'playlist_index': entry.get('playlist_index')
+            })
+
+        # Create playlist data structure similar to video-list from extension
+        playlist_data = {
+            'videos': videos,
+            'pageTitle': info.get('title') or f"Playlist ({len(videos)} videos)",
+            'pageUrl': download['url'],
+            'source': urlparse(download['url']).hostname or 'unknown'
+        }
+
+        self.playlist_detected.emit(download['id'], playlist_data)
+        return True
+
     def run(self):
         while True:
             download = self.download_queue.get()
@@ -863,8 +964,19 @@ class DownloadWorker(QThread):
                     
                     # First, get video info to check formats and extract metadata
                     self.status_update.emit(self.current_download_id, 'Preparing...')
+
+                    # On a page full of embedded players this call resolves every
+                    # one of them, which takes real time. Report each entry as it
+                    # lands so the row doesn't sit at "Preparing..." looking dead.
+                    probe_id = self.current_download_id
+
+                    def _report_probe(index, total):
+                        self.status_update.emit(
+                            probe_id, f'Reading video {index} of {total}...')
+
+                    probe_logger = YtDlpLogger(progress_callback=_report_probe)
                     try:
-                        with yt_dlp.YoutubeDL({'quiet': True}) as ydl:
+                        with yt_dlp.YoutubeDL({'quiet': True, 'logger': probe_logger}) as ydl:
                             info = ydl.extract_info(download['url'], download=False)
                     except (yt_dlp.DownloadError, yt_dlp.utils.ExtractorError) as extract_error:
                         # Check if this is a Vimeo embed error that we can retry
@@ -912,6 +1024,12 @@ class DownloadWorker(QThread):
                         else:
                             raise extract_error  # Re-raise original error
                     
+                    # This probe already knows whether the page held several videos,
+                    # so decide here rather than extracting the whole thing a second
+                    # time further down just to ask the same question.
+                    if self._emit_playlist_if_multi(download, info):
+                        continue
+
                     # Check if yt-dlp's title is useless (generic/HLS sources)
                     ytdlp_title_is_useless = (
                         info.get('extractor', '').lower() == 'generic' and
@@ -1033,76 +1151,9 @@ class DownloadWorker(QThread):
                             # First, extract info without downloading to check if it's a playlist
                             info = ydl.extract_info(download['url'], download=False)
                             
-                            # Check if this is a playlist with multiple entries (unless skipping detection)
-                            if download.get('skip_playlist_detection'):
-                                pass
-                            elif info.get('_type') == 'playlist' and len(info.get('entries', [])) > 1:
-                                
-                                # Add 1-based index to each entry for playlist_items support
-                                for i, entry in enumerate(info.get('entries', [])):
-                                    if entry:  # Some entries might be None for unavailable videos
-                                        entry['playlist_index'] = i + 1  # yt-dlp uses 1-based indexing
-                                
-                                # Format playlist entries for video selector
-                                videos = []
-                                for playlist_idx, entry in enumerate(info.get('entries', []), start=1):
-                                    if entry:  # Some entries might be None for unavailable videos
-                                        # For Instagram, prioritize webpage_url to avoid CDN URLs causing long filenames
-                                        # For Vimeo, prioritize url (embed URL with ?h= hash for private videos)
-                                        if entry.get('ie_key') == 'Instagram' or 'instagram.com' in str(entry.get('webpage_url', '')):
-                                            entry_url = (entry.get('webpage_url') or 
-                                                       entry.get('url') or 
-                                                       entry.get('original_url'))
-                                        else:
-                                            entry_url = (entry.get('url') or 
-                                                       entry.get('webpage_url') or 
-                                                       entry.get('original_url'))
-                                        
-                                        # Clean smuggled data but preserve query parameters like ?h=
-                                        if entry_url and '#__youtubedl_smuggle=' in entry_url:
-                                            entry_url = entry_url.split('#__youtubedl_smuggle=')[0]
-                                        
-                                        # Fix malformed URLs with double question marks
-                                        if entry_url and '?' in entry_url:
-                                            parts = entry_url.split('?')
-                                            if len(parts) > 2:
-                                                # Keep first ?, replace subsequent ? with &
-                                                entry_url = parts[0] + '?' + '&'.join(parts[1:])
-                                        
-                                        if not entry_url:
-                                            # Fallback: construct URL based on platform
-                                            if entry.get('ie_key') == 'Vimeo':
-                                                entry_url = f"https://vimeo.com/{entry.get('id', '')}"
-                                            elif entry.get('ie_key') == 'Youtube':
-                                                entry_url = f"https://www.youtube.com/watch?v={entry.get('id', '')}"
-                                            elif entry.get('ie_key') == 'Instagram':
-                                                # For Instagram, we need the post URL format
-                                                entry_url = f"https://instagram.com/p/{entry.get('id', '')}"
-                                            else:
-                                                entry_url = entry.get('id', 'Unknown')
-                                        
-                                        videos.append({
-                                            'url': entry_url,
-                                            'title': entry.get('title', f"Video {len(videos) + 1}"),
-                                            'thumbnail': entry.get('thumbnail'),
-                                            'duration': entry.get('duration'),
-                                            'uploader': entry.get('uploader'),
-                                            'original_title': entry.get('title', f"Video {len(videos) + 1}"),
-                                            'playlist_index': entry.get('playlist_index')
-                                        })
-                                
-                                # Create playlist data structure similar to video-list from extension
-                                playlist_data = {
-                                    'videos': videos,
-                                    'pageTitle': info.get('title', f"Playlist ({len(videos)} videos)"),
-                                    'pageUrl': download['url'],
-                                    'source': urlparse(download['url']).hostname or 'unknown'
-                                }
-                                
-                                self.playlist_detected.emit(download['id'], playlist_data)
-                                
-                                # Don't proceed with this download - let user select videos
-                                # Continue to next item in queue
+                            # Safety net: some pages only reveal themselves as a
+                            # playlist once the full options are applied.
+                            if self._emit_playlist_if_multi(download, info):
                                 continue
                             
                             # Single video or not a playlist - proceed with download
