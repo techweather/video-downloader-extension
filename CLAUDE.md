@@ -219,6 +219,22 @@ Scope: **A/B/C/F** are the in-scope "Apple support" set for the current dev vers
 
 Shipped via `video-scan-guard`. Per-tab `scanningTabs` guard in `triggerCombinedVideoDownload()` in both extensions (a second trigger now shows "Still scanning this page…" instead of starting a parallel scan); an in-page `#__dlwithit_scan_banner` shows "Scanning page for videos…" during the DOM scan — the scan runs in the page, so app-side status couldn't represent it. New `core/media_list.py` (`normalize_media_url` / `dedupe_videos` / `merge_video_lists`) mirrored by `dedupeVideos()` in both `background.js`; extensions dedupe before sending `video-list`, the app dedupes on receipt. `handle_video_list` keeps `_open_video_dialogs` keyed by pageUrl so a second scan merges into the open picker and raises it rather than stacking a dialog on `exec_()`'s nested event loop. 31 new tests, unit suite at 163 passing.
 
-**⚠️ Not yet verified live on a video-heavy page** — repro is andrewsiner.com; needs a reload of both unpacked extensions and a manual double-trigger to confirm one deduped picker.
+Deliberately skipped: parallelizing the per-video probes (the DOM scan's real cost is the `querySelectorAll('*')` attribute sweep, not network).
 
-Deliberately skipped: parallelizing the per-video probes (the scan's real cost is the `querySelectorAll('*')` attribute sweep, not network).
+**Live test on andrewsiner.com (2026-08-10) found the banner and guard work, but that the "Starting…" hang was a different code path entirely** — see below.
+
+---
+
+## ~~Queued fix — "Starting…" hang on pages with many embedded players~~ (done 2026-08-10)
+
+Shipped via `video-extract-speed`. andrewsiner.com never reaches the DOM-scan path: the extension finds <2 embeds, `/classify` says supported, and the page URL goes to yt-dlp — whose **generic extractor resolves all 12 embedded Vimeo videos** before the picker can appear. That was the hang (~56s observed).
+
+Two causes, both fixed:
+- **The page was fully extracted twice.** `run()` had two `extract_info(url, download=False)` calls (the metadata probe, then the playlist check). The probe already knows whether the page held several videos, so `_emit_playlist_if_multi()` now runs there and `continue`s before the second extraction is reached. Measured: one pass = 13 `extract_info` calls / 8.8s; the second pass additionally forced per-entry format selection.
+- **No progress during the probe.** `YtDlpLogger` takes a `progress_callback` and parses `[download] Downloading item N of M` — the one line yt-dlp emits per entry regardless of extractor. The row now reads "Reading video 4 of 12…".
+
+The duplicated playlist-detection block is now one `_emit_playlist_if_multi()` method used by both call sites; the second call remains a safety net for pages that only reveal themselves once full options are applied. Both extensions now clear the scan banner *before* the "no videos found" alert (`alert()` blocks the injected script, so the background page couldn't remove it until dismissed). 19 new tests, unit suite at 182 passing.
+
+**Verified**: on the real repro page, one pass → picker with 12 videos and correct titles. **Not yet verified**: the end-to-end wall-clock improvement through the extension in a browser, and the "Reading video N of M" label appearing in the UI.
+
+**Still open (deliberate)**: `extract_flat='in_playlist'` returns the same 12 entries in **0.4s vs 8.8s**, but with `title: None`. Worth doing if the wait is still too long — it needs titles backfilled from the extension's iframe scrape, or the picker shown immediately and titles filled in as they resolve.
