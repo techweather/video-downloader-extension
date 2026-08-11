@@ -701,6 +701,10 @@ function triggerCombinedVideoDownload(tab) {
                     } else {
                       msg += '\\nThe page may use a different video delivery method or videos may not be loaded yet.';
                     }
+                    // Clear the scanning banner first — alert() blocks this script,
+                    // so the background page can't remove it until we return.
+                    var banner = document.getElementById('__dlwithit_scan_banner');
+                    if (banner) banner.remove();
                     alert(msg);
                   } else {
                     sendVideosToBackground(videos, document.title, window.location.href);
