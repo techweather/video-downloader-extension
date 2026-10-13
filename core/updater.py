@@ -62,8 +62,10 @@ class InstallUpdateWorker(QThread):
                 return
 
             self.status_update.emit("Updating...")
+            # The [curl-cffi] extra keeps curl_cffi inside the range this yt-dlp
+            # supports — Vimeo refuses yt-dlp without it (HTTP 401).
             result = subprocess.run(
-                [sys.executable, "-m", "pip", "install", "--upgrade", "yt-dlp"],
+                [sys.executable, "-m", "pip", "install", "--upgrade", "yt-dlp[curl-cffi]"],
                 capture_output=True, text=True, timeout=120
             )
 
