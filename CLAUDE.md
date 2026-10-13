@@ -93,6 +93,8 @@ Lumping these in before the signed/notarized build, since momentum is good. Each
 
 26. **Instagram "empty media response" report from tester** — friend on the March 1.0.0 build hit a `DownloadError` on `https://www.instagram.com/p/Dae8b-tu-eV/` (video); full raw report + analysis in the Obsidian vault at `01_Projects/dlwithit/User Bug Reports.md`. Not necessarily a dlwithit bug — yt-dlp reports Instagram returned no media, likely private/restricted or Instagram tightening anonymous access. **First step:** open the URL in a browser NOT logged in to Instagram — if it plays, it's a yt-dlp extractor bug worth reporting upstream; if it doesn't, the error is accurate and the fix on our side is a friendlier error dialog ("this post may be private, geo-restricted, or removed — try opening the link in your browser to verify"). **Second step (if this pattern is common):** expose `--cookies-from-browser` in Settings as yt-dlp's error message itself suggests — would resolve most Instagram cases where the user is logged in but the app isn't. **Reporter migration note:** they're on the March 1.0.0 build, so any fix on main doesn't reach them until they get a new .pkg (per priority #20 migration note).
 
+27. ~~**archive.org downloads the multi-GB master**~~ — done (2026-10-13, `archive-org-derivatives`). yt-dlp's archive.org extractor ranks an item's original upload above every derivative and reports no codecs, so `'best'` grabbed the preservation master — 94.5 GB for *The Growth of Plants*, 351 GB for *Holiday in Hawaii*. `build_format_string(quality, extractor_key)` in `core/downloader.py` now owns the quality → selector choice; once the probe names the site, archive.org items get `ARCHIVE_ORG_FORMAT` (largest derivative with a picture → the 640×480 h.264 mp4 archive.org's own player streams; master only if no such copy). Every other site's string is unchanged. Rejected: a filesize cap (a cap low enough to catch the 1.8 GB case silently drops hour-long 4K YouTube to 1440p, and HLS sizes are unknown anyway) and "prefer mp4" (codecs are unknown, and some masters *are* mp4 — 10.9 GB, 35 GB). The master is still reachable deliberately: paste the direct `archive.org/download/…/file.mov` link into Paste URL (goes through the generic extractor, not this rule). Verified live in the dev app: *Symphony in Motion* → 66 MB h.264 mp4, was a 1.8 GB mov. 21 new tests. **Follow-up in Things:** warn before any download whose known size crosses a threshold (all sites) — needs UI design.
+
 ---
 
 ## Things I care about for the "ready to share" bar
@@ -114,7 +116,7 @@ Before this goes to a wider group of people, these must be true:
 
 ```bash
 cd /Users/seanstarkweather/01_Projects/dlwithit
-.venv/bin/pytest tests/test_api.py tests/test_classify.py tests/test_download_payload.py tests/test_encoder_logic.py -v
+.venv/bin/pytest tests/test_api.py tests/test_classify.py tests/test_download_payload.py tests/test_encoder_logic.py tests/test_format_selection.py -v
 ```
 
 Runs in ~2 seconds, no downloads, no browser, no app running needed.
@@ -125,6 +127,7 @@ Runs in ~2 seconds, no downloads, no browser, no app running needed.
 | `tests/test_classify.py` | `/classify` with real URL patterns — YouTube, Vimeo, Instagram, TikTok, direct MP4, edge cases |
 | `tests/test_download_payload.py` | All payload shapes the extension sends; crash prevention (missing `type` field); signal routing |
 | `tests/test_encoder_logic.py` | Image magic-byte detection (JPEG/PNG/WebP/GIF); codec → encode decision (VP9/AV1/H264) |
+| `tests/test_format_selection.py` | yt-dlp format strings per quality; archive.org picks the web copy, not the master — runs yt-dlp's real selector offline |
 
 ### Tier 2 — manual smoke test (not yet built)
 
