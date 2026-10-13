@@ -46,6 +46,22 @@ def _detect_image_extension(filepath):
     return None
 
 
+def build_format_string(quality):
+    """Return the yt-dlp format selector for a quality setting."""
+    # Prefer non-AD (Audio Description) tracks: yt-dlp marks AD tracks
+    # with a "-desc" language suffix (e.g. "en-desc"). We filter these out
+    # first, then fall back to any audio if no regular track is available.
+    if quality == 'bestaudio':
+        return 'bestaudio[language!$=-desc]/bestaudio/best'
+    elif quality == 'best':
+        return 'bestvideo+(bestaudio[language!$=-desc]/bestaudio)/best'
+    elif quality == 'worst':
+        return 'worstvideo+worstaudio/worst'
+    else:
+        # Specific resolution (numeric)
+        return f'bestvideo[height<={quality}]+(bestaudio[language!$=-desc]/bestaudio)/best[height<={quality}]'
+
+
 # yt-dlp logs one of these per entry while it walks a playlist, whatever the
 # extractor is — the only reliable progress signal during a multi-video extract.
 _PLAYLIST_ITEM_RE = re.compile(r'^\[download\] Downloading item (\d+) of (\d+)')
@@ -887,21 +903,8 @@ class DownloadWorker(QThread):
                             continue
                     
                     quality = download.get('quality', 'best')
+                    format_str = build_format_string(quality)
 
-                    # Set format based on quality.
-                    # Prefer non-AD (Audio Description) tracks: yt-dlp marks AD tracks
-                    # with a "-desc" language suffix (e.g. "en-desc"). We filter these out
-                    # first, then fall back to any audio if no regular track is available.
-                    if quality == 'bestaudio':
-                        format_str = 'bestaudio[language!$=-desc]/bestaudio/best'
-                    elif quality == 'best':
-                        format_str = 'bestvideo+(bestaudio[language!$=-desc]/bestaudio)/best'
-                    elif quality == 'worst':
-                        format_str = 'worstvideo+worstaudio/worst'
-                    else:
-                        # Specific resolution (numeric)
-                        format_str = f'bestvideo[height<={quality}]+(bestaudio[language!$=-desc]/bestaudio)/best[height<={quality}]'
-                    
                     # Reset logger for this download
                     self.ytdlp_logger.reset()
 
