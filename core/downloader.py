@@ -46,8 +46,19 @@ def _detect_image_extension(filepath):
     return None
 
 
-def build_format_string(quality):
-    """Return the yt-dlp format selector for a quality setting."""
+# archive.org lists its preservation masters (multi-GB ProRes .mov film scans)
+# ahead of the web copies its own player streams, and reports no codecs, so
+# plain 'best' lands on the master — 94 GB for a ten-minute film. Take the
+# largest web copy that has a picture; fall back to the master only when the
+# item has no such copy.
+ARCHIVE_ORG_FORMAT = 'best[format_note=derivative][height>0]/best'
+
+
+def build_format_string(quality, extractor_key=None):
+    """Return the yt-dlp format selector for a quality setting and site."""
+    if quality == 'best' and extractor_key == 'ArchiveOrg':
+        return ARCHIVE_ORG_FORMAT
+
     # Prefer non-AD (Audio Description) tracks: yt-dlp marks AD tracks
     # with a "-desc" language suffix (e.g. "en-desc"). We filter these out
     # first, then fall back to any audio if no regular track is available.
@@ -1032,6 +1043,10 @@ class DownloadWorker(QThread):
                     # time further down just to ask the same question.
                     if self._emit_playlist_if_multi(download, info):
                         continue
+
+                    # The probe has now told us which site this is, so apply
+                    # any per-site format rule (archive.org's master files).
+                    ydl_opts['format'] = build_format_string(quality, info.get('extractor_key'))
 
                     # Check if yt-dlp's title is useless (generic/HLS sources)
                     ytdlp_title_is_useless = (
