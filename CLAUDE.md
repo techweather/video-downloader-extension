@@ -250,3 +250,29 @@ The duplicated playlist-detection block is now one `_emit_playlist_if_multi()` m
 Two consequences:
 - Any feature keyed on "which element did you right-click" is a dead end for exactly the multi-embed pages that need it most. A viewport-prominence hint is the only workable signal — see the Things item.
 - **This is a documentation problem, not a workflow problem.** Right-click stays the primary taught path in both READMEs and the demo video — most people reach for it and don't use shortcuts. The instruction to add is simply *"on a page with an embedded player, right-click just outside the player frame — right-clicking the video itself opens the player's own menu."* The keyboard shortcut is presented second, as the faster way once you know it. Do **not** restructure the docs or the demo around the shortcut (considered and rejected, Sean, 2026-08-10).
+
+---
+
+## Demo content & store assets — lives in a sibling repo (added 2026-10-12)
+
+The demo video, store screenshots, and README stills are built in
+**`~/01_Projects/dlwithit-demo-sites`**, deliberately outside this repo so none of it
+lands in the PyInstaller bundle or the `.pkg`.
+
+**Authority: `dlwithit-demo-sites/DEMO_PLAN.md`.** Direction, the full ~85s shot-by-shot
+script with type-card copy, the five staging conditions, asset inventory, outstanding
+work, and a list of directions already rejected. Read it before any demo work.
+
+Built and working: the **EFEMRA Department** — a fictional institutional archive, four
+pages, 25 public-domain/CC assets (NASA, Wikimedia, Prelinger) with provenance in
+`CREDITS.md`, served by `serve.py` with per-file bandwidth throttling so the queue's
+mix of states is reproducible rather than luck.
+
+Still outstanding: the store screenshot itself (hard-blocks priorities #10 and #25 —
+`assets/screenshots/` is still empty), an archive.org embed page, 13 full-frame type
+cards, SVG keycap graphics, a staging script, and the shotlist → Premiere `.jsx` +
+ffmpeg preview assembly.
+
+**Claude → After Effects bridge:** Sean built one on his MacBook Pro. It is **not yet
+on this machine** (After Effects 2022–2026 are installed; the bridge is not). Porting
+it is tracked in Things and unlocks the shot-10 burst, the type cards, and the keycaps.
