@@ -11,22 +11,31 @@ from queue import Queue
 from typing import Optional, Callable, Dict, Any
 
 
+def bundled_binaries_dir() -> Optional[str]:
+    """Folder holding bundled ffmpeg/ffprobe/deno in a frozen build; None when running from source.
+
+    PyInstaller's sys._MEIPASS is Contents/Frameworks in the Qt .app and the
+    _internal folder of the headless engine build, so one lookup covers both.
+    """
+    if not getattr(sys, 'frozen', False):
+        return None
+    meipass = getattr(sys, '_MEIPASS', None)
+    if meipass:
+        return meipass
+    # Older layout guess: Contents/MacOS/<exe> -> Contents/Frameworks
+    return os.path.join(os.path.dirname(os.path.dirname(sys.executable)), 'Frameworks')
+
+
 def get_ffmpeg_bin() -> str:
-    """Return the absolute path to ffmpeg, whether running from source or a bundled .app."""
-    if getattr(sys, 'frozen', False):
-        # Bundled macOS .app: sys.executable is Contents/MacOS/<name>
-        # PyInstaller places ffmpeg in Contents/Frameworks/
-        contents_dir = os.path.dirname(os.path.dirname(sys.executable))
-        return os.path.join(contents_dir, 'Frameworks', 'ffmpeg')
-    return 'ffmpeg'
+    """Return the absolute path to ffmpeg, whether running from source or a bundled app."""
+    folder = bundled_binaries_dir()
+    return os.path.join(folder, 'ffmpeg') if folder else 'ffmpeg'
 
 
 def get_ffprobe_bin() -> str:
-    """Return the absolute path to ffprobe, whether running from source or a bundled .app."""
-    if getattr(sys, 'frozen', False):
-        contents_dir = os.path.dirname(os.path.dirname(sys.executable))
-        return os.path.join(contents_dir, 'Frameworks', 'ffprobe')
-    return 'ffprobe'
+    """Return the absolute path to ffprobe, whether running from source or a bundled app."""
+    folder = bundled_binaries_dir()
+    return os.path.join(folder, 'ffprobe') if folder else 'ffprobe'
 
 
 def get_ffmpeg_dir() -> Optional[str]:
@@ -34,10 +43,7 @@ def get_ffmpeg_dir() -> Optional[str]:
     Return the directory containing ffmpeg/ffprobe for yt-dlp's ffmpeg_location option.
     Returns None in dev (yt-dlp uses PATH), absolute dir path when bundled.
     """
-    if getattr(sys, 'frozen', False):
-        contents_dir = os.path.dirname(os.path.dirname(sys.executable))
-        return os.path.join(contents_dir, 'Frameworks')
-    return None
+    return bundled_binaries_dir()
 
 from .events import Signal, WorkerThread
 

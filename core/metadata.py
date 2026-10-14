@@ -47,7 +47,11 @@ def _exiftool_cmd():
     if getattr(sys, 'frozen', False):
         # --- Bundled .app: use the exiftool we shipped ---
         contents_dir = os.path.dirname(os.path.dirname(sys.executable))
-        bundle = os.path.join(contents_dir, 'Resources', 'exiftool_bundle')
+        # sys._MEIPASS covers both the Qt .app and the headless engine build;
+        # Contents/Resources is the Qt .app's original location.
+        bundle = os.path.join(getattr(sys, '_MEIPASS', ''), 'exiftool_bundle')
+        if not os.path.exists(bundle):
+            bundle = os.path.join(contents_dir, 'Resources', 'exiftool_bundle')
         script = os.path.join(bundle, 'exiftool')
         lib    = os.path.join(bundle, 'lib')
         logger.debug(f"[frozen] sys.executable={sys.executable}")

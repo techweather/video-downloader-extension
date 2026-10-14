@@ -25,9 +25,9 @@ import threading
 import time
 
 # When running from a frozen PyInstaller bundle, bundled binaries (ffmpeg,
-# ffprobe, deno) sit next to the executable; put them on PATH for yt-dlp.
+# ffprobe, deno) sit in sys._MEIPASS; put them on PATH for yt-dlp.
 if getattr(sys, 'frozen', False):
-    _bundle_dir = os.path.dirname(os.path.abspath(sys.executable))
+    _bundle_dir = getattr(sys, '_MEIPASS', os.path.dirname(os.path.abspath(sys.executable)))
     os.environ['PATH'] = _bundle_dir + os.pathsep + os.environ.get('PATH', '')
 
 from api.flask_server import FlaskServer  # noqa: E402
