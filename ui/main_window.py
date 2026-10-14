@@ -29,6 +29,7 @@ from core.macos import set_dock_visible, set_launch_at_login, refresh_dock_icon
 from core.url_router import classify_pasted_url
 from core.media_list import dedupe_videos
 from core.routing import route_picked_video
+from core.error_reporter import summarize_error
 from ui.components.download_item import DownloadItem
 from ui.components.video_selector import VideoSelectorDialog
 from ui.window_utils import bring_window_to_front, bring_dialog_to_front
@@ -1151,20 +1152,7 @@ class MainWindow(QMainWindow):
     
     def _extract_short_error(self, raw_error):
         """Extract a concise one-line error summary from yt-dlp/requests output."""
-        import re
-        clean = re.sub(r'\x1b\[[0-9;]*m', '', raw_error)  # strip ANSI codes
-        # yt-dlp errors always contain an 'ERROR: ...' line — extract just that
-        for line in clean.splitlines():
-            line = line.strip()
-            if line.startswith('ERROR:'):
-                msg = line[6:].strip()
-                msg = re.sub(r'^\[[^\]]+\]\s*', '', msg)   # strip [extractor] prefix
-                msg = re.sub(r'https?://\S+', 'URL', msg)  # shorten URLs
-                return msg[:55] + '\u2026' if len(msg) > 55 else msg
-        # Fallback: collapse whitespace, strip verbose exception prefixes
-        clean = ' '.join(clean.split())
-        clean = re.sub(r'(Exception Type|Error Message|Traceback)[^:]*:\s*', '', clean)
-        return clean[:55] + '\u2026' if len(clean) > 55 else clean
+        return summarize_error(raw_error)
 
     def download_failed(self, download_id, error):
         """Handle download failure"""

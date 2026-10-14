@@ -27,6 +27,23 @@ def redact_paths(text: str) -> str:
     return text
 
 
+def summarize_error(raw_error: str, limit: int = 55) -> str:
+    """One-line summary of a yt-dlp/requests error, for a download row."""
+    clean = strip_ansi(raw_error or '')
+    # yt-dlp errors always contain an 'ERROR: ...' line — extract just that
+    for line in clean.splitlines():
+        line = line.strip()
+        if line.startswith('ERROR:'):
+            msg = line[6:].strip()
+            msg = re.sub(r'^\[[^\]]+\]\s*', '', msg)   # strip [extractor] prefix
+            msg = re.sub(r'https?://\S+', 'URL', msg)  # shorten URLs
+            return msg[:limit] + '\u2026' if len(msg) > limit else msg
+    # Fallback: collapse whitespace, strip verbose exception prefixes
+    clean = ' '.join(clean.split())
+    clean = re.sub(r'(Exception Type|Error Message|Traceback)[^:]*:\s*', '', clean)
+    return clean[:limit] + '\u2026' if len(clean) > limit else clean
+
+
 def clean_error_text(text: str) -> str:
     """Strip ANSI codes and redact user paths — the full text, not summarised."""
     return redact_paths(strip_ansi(text))
