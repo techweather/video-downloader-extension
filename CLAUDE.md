@@ -97,6 +97,8 @@ Lumping these in before the signed/notarized build, since momentum is good. Each
 
 28. ~~**Vimeo returns 401 on every video**~~ — done (2026-10-13, `vimeo-curl-cffi`). Found while wrapping up #27: every Vimeo URL failed with `HTTP Error 401: Unauthorized` — direct links and portfolio-site embeds alike — on yt-dlp 2026.03.17 *and* the then-latest 2026.8.19. Vimeo now only answers yt-dlp when it can impersonate a browser, which needs the optional `curl_cffi` package. The fix is a dependency, not code: `requirements.txt` and the in-app updater now ask for `yt-dlp[curl-cffi]`, and yt-dlp's own extra picks a matching `curl_cffi` (each yt-dlp release only accepts a version range — 2026.03.17 stops at 0.14, so the two must move together). **New dependency:** `curl_cffi` 0.16.3 + `cffi` (~7 MB, native `.so`). yt-dlp's PyInstaller hook collects it automatically, so `dlwithit.spec` is unchanged. Verified live in the dev app: a reMarkable spot embedded on andrewsiner.com downloaded at 1440×1080 h.264 + AAC (26 MB). YouTube (4K) and archive.org (#27) re-checked on the new yt-dlp. **Not yet verified:** Vimeo from the bundled `.app` — see #20 (f). **Reporter note:** the March 1.0.0 build can't get this via the yt-dlp button (frozen builds skip pip) — it arrives with the next `.pkg`.
 
+29. ~~**Sidecar files had doubled extensions**~~ — done (2026-10-13, `sidecar-filenames`). Found while recording the demo's metadata beat: with "Metadata: Sidecar files", every sidecar came out as `X.description.description`, `X.info.json.info.json` and `X.url.webloc`, and no `.url` was written. yt-dlp swaps a template's extension for its own only when the template ends in the media's extension, so templates already ending in `.description` etc. got it appended again. `'webloc'` was never a template type, and `'writewebloc'` isn't a yt-dlp option. Both sidecar call sites in `core/downloader.py` now share `sidecar_outtmpl()` (every metadata template ends in `.%(ext)s`), and `writeurllink` asks for the `.url` alongside the `.webloc`. 4 new tests in `tests/test_sidecar_paths.py` run yt-dlp's real filename logic offline; Tier 1 at 82. Verified live on an archive.org item: `.description`, `.info.json`, `.url`, `.webloc`, `_thumbnail.jpg` in `_metadata/`. **Reporter note:** the March 1.0.0 build has the bug, so the fix arrives with the next `.pkg`.
+
 ---
 
 ## Things I care about for the "ready to share" bar
@@ -118,7 +120,7 @@ Before this goes to a wider group of people, these must be true:
 
 ```bash
 cd /Users/seanstarkweather/01_Projects/dlwithit
-.venv/bin/pytest tests/test_api.py tests/test_classify.py tests/test_download_payload.py tests/test_encoder_logic.py tests/test_format_selection.py -v
+.venv/bin/pytest tests/test_api.py tests/test_classify.py tests/test_download_payload.py tests/test_encoder_logic.py tests/test_format_selection.py tests/test_sidecar_paths.py -v
 ```
 
 Runs in ~2 seconds, no downloads, no browser, no app running needed.
@@ -130,6 +132,7 @@ Runs in ~2 seconds, no downloads, no browser, no app running needed.
 | `tests/test_download_payload.py` | All payload shapes the extension sends; crash prevention (missing `type` field); signal routing |
 | `tests/test_encoder_logic.py` | Image magic-byte detection (JPEG/PNG/WebP/GIF); codec → encode decision (VP9/AV1/H264) |
 | `tests/test_format_selection.py` | yt-dlp format strings per quality; archive.org picks the web copy, not the master — runs yt-dlp's real selector offline |
+| `tests/test_sidecar_paths.py` | Sidecar metadata filenames — one extension each, all in `_metadata/` — via yt-dlp's real filename logic |
 
 ### Tier 2 — manual smoke test (not yet built)
 
