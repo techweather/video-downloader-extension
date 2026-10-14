@@ -54,6 +54,22 @@ def _detect_image_extension(filepath):
 ARCHIVE_ORG_FORMAT = 'best[format_note=derivative][height>0]/best'
 
 
+def sidecar_outtmpl(media_dir, metadata_dir, base_filename):
+    """yt-dlp output templates for sidecar mode: media in media_dir, metadata files in metadata_dir."""
+    # Every metadata template ends in .%(ext)s on purpose: yt-dlp swaps that extension
+    # for its own (.description, .info.json, .url/.webloc). A template that already
+    # ends in .description gets the extension appended again.
+    meta = str(Path(metadata_dir) / f'{base_filename}.%(ext)s')
+    return {
+        'default': str(Path(media_dir) / f'{base_filename}.%(ext)s'),
+        'thumbnail': str(Path(metadata_dir) / f'{base_filename}_thumbnail.%(ext)s'),
+        'description': meta,
+        'infojson': meta,
+        'link': meta,
+        'subtitle': meta,
+    }
+
+
 def build_format_string(quality, extractor_key=None):
     """Return the yt-dlp format selector for a quality setting and site."""
     if quality == 'best' and extractor_key == 'ArchiveOrg':
@@ -969,7 +985,7 @@ class DownloadWorker(QThread):
                             'writedescription': True,
                             'writeinfojson': True,
                             'writelink': True,
-                            'writewebloc': True,
+                            'writeurllink': True,  # .url too; writelink gives .webloc on macOS
                             'writesubtitles': False,  # Disabled - often causes errors
                             'writeautomaticsub': False,  # Disabled - often causes errors
                             'ignoreerrors': True,  # Continue even if some metadata fails
@@ -1095,15 +1111,7 @@ class DownloadWorker(QThread):
                             Path(metadata_path).mkdir(parents=True, exist_ok=True)
                             
                             # Set different output templates for video and metadata
-                            ydl_opts['outtmpl'] = {
-                                'default': str(Path(extractor_path) / f'{base_filename}.%(ext)s'),
-                                'thumbnail': str(Path(metadata_path) / f'{base_filename}_thumbnail.%(ext)s'),
-                                'description': str(Path(metadata_path) / f'{base_filename}.description'),
-                                'infojson': str(Path(metadata_path) / f'{base_filename}.info.json'),
-                                'link': str(Path(metadata_path) / f'{base_filename}.url'),
-                                'webloc': str(Path(metadata_path) / f'{base_filename}.webloc'),
-                                'subtitle': str(Path(metadata_path) / f'{base_filename}.%(ext)s'),
-                            }
+                            ydl_opts['outtmpl'] = sidecar_outtmpl(extractor_path, metadata_path, base_filename)
                         else:
                             ydl_opts['outtmpl'] = f'{base_filename}.%(ext)s'
                             ydl_opts['paths'] = {'home': extractor_path}
@@ -1143,15 +1151,7 @@ class DownloadWorker(QThread):
                             Path(metadata_path).mkdir(parents=True, exist_ok=True)
                             
                             # Set different output templates for video and metadata
-                            ydl_opts['outtmpl'] = {
-                                'default': str(Path(extractor_path) / f'{base_filename}.%(ext)s'),
-                                'thumbnail': str(Path(metadata_path) / f'{base_filename}_thumbnail.%(ext)s'),
-                                'description': str(Path(metadata_path) / f'{base_filename}.description'),
-                                'infojson': str(Path(metadata_path) / f'{base_filename}.info.json'),
-                                'link': str(Path(metadata_path) / f'{base_filename}.url'),
-                                'webloc': str(Path(metadata_path) / f'{base_filename}.webloc'),
-                                'subtitle': str(Path(metadata_path) / f'{base_filename}.%(ext)s'),
-                            }
+                            ydl_opts['outtmpl'] = sidecar_outtmpl(extractor_path, metadata_path, base_filename)
                         else:
                             ydl_opts['outtmpl'] = f'{base_filename}.%(ext)s'
                             ydl_opts['paths'] = {'home': extractor_path}
