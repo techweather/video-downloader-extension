@@ -1,28 +1,74 @@
+import QuickLookThumbnailing
 import SwiftUI
 
-// Colour placeholder until real thumbnails come from the engine.
+/// Thumbnail for a download: the downloaded file itself once it exists (via Quick Look),
+/// otherwise the site's thumbnail URL, otherwise a tinted placeholder.
 struct Thumbnail: View {
-    let item: DownloadItem
+    let item: DisplayItem
     var cornerRadius: CGFloat = 7
 
+    @State private var fileImage: NSImage?
+
     var body: some View {
-        RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
-            .fill(item.thumb.gradient)
-            .overlay {
-                Image(systemName: item.isImage ? "photo" : "play.fill")
-                    .font(.system(size: 13, weight: .semibold))
-                    .foregroundStyle(.white.opacity(0.75))
+        ZStack {
+            RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
+                .fill(sourceTint(item.source).opacity(0.35).gradient)
+            if let fileImage {
+                Image(nsImage: fileImage).resizable().scaledToFill()
+            } else if let url = item.thumbnailURL {
+                AsyncImage(url: url) { phase in
+                    if let image = phase.image {
+                        image.resizable().scaledToFill()
+                    } else {
+                        placeholderGlyph
+                    }
+                }
+            } else {
+                placeholderGlyph
             }
+        }
+        .clipShape(RoundedRectangle(cornerRadius: cornerRadius, style: .continuous))
+        .task(id: item.fileExists ? item.filePath : nil) {
+            fileImage = await ThumbnailCache.shared.image(for: item.fileExists ? item.filePath : nil)
+        }
+    }
+
+    private var placeholderGlyph: some View {
+        Image(systemName: item.isImage ? "photo" : "play.fill")
+            .font(.system(size: 13, weight: .semibold))
+            .foregroundStyle(.white.opacity(0.75))
+    }
+}
+
+/// Quick Look thumbnails of downloaded files, generated once per path.
+@MainActor
+final class ThumbnailCache {
+    static let shared = ThumbnailCache()
+    private var images: [String: NSImage] = [:]
+
+    func image(for path: String?) async -> NSImage? {
+        guard let path else { return nil }
+        if let cached = images[path] { return cached }
+        let request = QLThumbnailGenerator.Request(
+            fileAt: URL(fileURLWithPath: path),
+            size: CGSize(width: 320, height: 180),
+            scale: NSScreen.main?.backingScaleFactor ?? 2,
+            representationTypes: .thumbnail)
+        guard let rep = try? await QLThumbnailGenerator.shared.generateBestRepresentation(for: request) else {
+            return nil
+        }
+        images[path] = rep.nsImage
+        return rep.nsImage
     }
 }
 
 // Detail line under a title: red with a warning icon when failed.
 struct DetailLine: View {
-    let item: DownloadItem
+    let item: DisplayItem
 
     var body: some View {
-        if case .failed(let message) = item.state {
-            Label(message, systemImage: "exclamationmark.triangle.fill")
+        if item.isFailed {
+            Label(item.detail, systemImage: "exclamationmark.triangle.fill")
                 .foregroundStyle(.red)
         } else {
             Text(item.detail)
@@ -32,9 +78,37 @@ struct DetailLine: View {
     }
 }
 
+struct ItemProgress: View {
+    let item: DisplayItem
+    var size: ControlSize = .small
+
+    var body: some View {
+        switch item.state {
+        case .queued:
+            ProgressView(value: 0).controlSize(size)
+        case .preparing, .merging:
+            ProgressView().progressViewStyle(.linear).controlSize(size)
+        case .converting:
+            if let p = item.progress {
+                ProgressView(value: p).controlSize(size).tint(.purple)
+            } else {
+                ProgressView().progressViewStyle(.linear).controlSize(size).tint(.purple)
+            }
+        case .downloading:
+            if let p = item.progress {
+                ProgressView(value: p).controlSize(size)
+            } else {
+                ProgressView().progressViewStyle(.linear).controlSize(size)
+            }
+        default:
+            EmptyView()
+        }
+    }
+}
+
 struct DownloadRow: View {
-    let item: DownloadItem
-    @Environment(DownloadStore.self) private var store
+    let item: DisplayItem
+    @Environment(AppModel.self) private var model
 
     var body: some View {
         HStack(spacing: 12) {
@@ -45,7 +119,7 @@ struct DownloadRow: View {
                 Text(item.title)
                     .font(.headline)
                     .lineLimit(1)
-                progress
+                ItemProgress(item: item)
                 DetailLine(item: item)
                     .font(.caption)
                     .lineLimit(1)
@@ -55,36 +129,25 @@ struct DownloadRow: View {
             actions
         }
         .padding(.vertical, 4)
-        .contextMenu { DownloadContextMenu(item: item, inLibrary: false) }
-    }
-
-    @ViewBuilder private var progress: some View {
-        switch item.state {
-        case .downloading(let p):
-            ProgressView(value: p).controlSize(.small)
-        case .converting(let p):
-            ProgressView(value: p).controlSize(.small).tint(.purple)
-        case .queued:
-            ProgressView(value: 0).controlSize(.small)
-        default:
-            EmptyView()
-        }
+        .contentShape(Rectangle())
+        .onTapGesture(count: 2) { model.open(item) }
+        .contextMenu { DownloadContextMenu(item: item) }
     }
 
     @ViewBuilder private var actions: some View {
         HStack(spacing: 6) {
             if item.canConvert {
-                Button("Convert to MP4") { store.convert(item.id) }
+                Button("Convert to MP4") { model.convert(item) }
                     .controlSize(.small)
             }
-            if case .failed = item.state {
-                Button("Retry") { store.retry(item.id) }
+            if item.isFailed || item.state == .cancelled {
+                Button("Retry") { model.retry(item) }
                     .controlSize(.small)
             }
-            if item.state.isActive {
-                IconButton(systemImage: "xmark", help: "Cancel") { store.cancel(item.id) }
-            } else if item.state == .done {
-                IconButton(systemImage: "magnifyingglass", help: "Show in Finder") {}
+            if item.isActive {
+                IconButton(systemImage: "xmark", help: "Cancel") { model.cancel(item) }
+            } else if item.fileExists {
+                IconButton(systemImage: "magnifyingglass", help: "Show in Finder") { model.revealInFinder(item) }
             }
         }
     }
@@ -111,49 +174,48 @@ struct IconButton: View {
 }
 
 struct DownloadContextMenu: View {
-    let item: DownloadItem
-    let inLibrary: Bool
-    @Environment(DownloadStore.self) private var store
+    let item: DisplayItem
+    @Environment(AppModel.self) private var model
 
     var body: some View {
-        if item.state == .done {
-            Button("Show in Finder") {}
-            Button("Open") {}
+        if item.fileExists {
+            Button("Open") { model.open(item) }
+            Button("Show in Finder") { model.revealInFinder(item) }
         }
         if item.canConvert {
-            Button("Convert to MP4") { store.convert(item.id) }
+            Button("Convert to MP4") { model.convert(item) }
         }
-        Button("Copy Original Link") {}
+        if item.url != nil {
+            Button("Copy Original Link") { model.copyLink(item) }
+        }
+        if item.origin == .job && (item.isFailed || item.state == .cancelled) {
+            Button("Retry") { model.retry(item) }
+        }
+        if item.origin == .job && item.isFailed {
+            Button("Report Error…") { model.reportError(item) }
+        }
         Divider()
-        if inLibrary {
-            Button("Remove from Library") { store.removeFromLibrary(item.id) }
-        } else if item.state.isActive {
-            Button("Cancel Download") { store.cancel(item.id) }
+        if item.isActive {
+            Button("Cancel Download") { model.cancel(item) }
+        } else if item.origin == .library {
+            Button("Remove from Library") { model.remove(item) }
         } else {
-            Button("Remove from List") { store.removeFromList(item.id) }
+            Button("Remove from List") { model.remove(item) }
         }
     }
 }
 
 struct GalleryCard: View {
-    let item: DownloadItem
+    let item: DisplayItem
+    @Environment(AppModel.self) private var model
 
     var body: some View {
         VStack(alignment: .leading, spacing: 6) {
             Thumbnail(item: item, cornerRadius: 10)
                 .aspectRatio(16 / 9, contentMode: .fit)
                 .overlay(alignment: .bottom) { progressOverlay }
-                .overlay(alignment: .topTrailing) {
-                    if item.canConvert {
-                        Text("WebM")
-                            .font(.caption2.weight(.semibold))
-                            .padding(.horizontal, 7).padding(.vertical, 2)
-                            .background(.black.opacity(0.5), in: Capsule())
-                            .foregroundStyle(.white)
-                            .padding(6)
-                    }
-                }
-                .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
+                .overlay(alignment: .topTrailing) { badge }
+                .opacity(item.fileExists || item.isActive ? 1 : 0.55)
 
             VStack(alignment: .leading, spacing: 1) {
                 Text(item.title)
@@ -164,24 +226,40 @@ struct GalleryCard: View {
                     .lineLimit(1)
             }
         }
-        .contextMenu { DownloadContextMenu(item: item, inLibrary: true) }
+        .contentShape(Rectangle())
+        .onTapGesture(count: 2) { model.open(item) }
+        .contextMenu { DownloadContextMenu(item: item) }
+    }
+
+    @ViewBuilder private var badge: some View {
+        let text: String? = item.fileCount > 1 ? "\(item.fileCount) files"
+            : item.canConvert ? "WebM" : nil
+        if let text {
+            Text(text)
+                .font(.caption2.weight(.semibold))
+                .padding(.horizontal, 7).padding(.vertical, 2)
+                .background(.black.opacity(0.5), in: Capsule())
+                .foregroundStyle(.white)
+                .padding(6)
+        }
     }
 
     @ViewBuilder private var progressOverlay: some View {
-        switch item.state {
-        case .downloading(let p), .converting(let p):
+        if item.isActive {
             HStack(spacing: 6) {
-                ProgressView(value: p).controlSize(.mini).tint(.white)
-                Text("\(Int(p * 100))%")
-                    .font(.caption2.weight(.semibold))
-                    .monospacedDigit()
-                    .foregroundStyle(.white)
+                ItemProgress(item: item, size: .mini)
+                    .tint(.white)
+                if let p = item.progress {
+                    Text("\(Int(p * 100))%")
+                        .font(.caption2.weight(.semibold))
+                        .monospacedDigit()
+                        .foregroundStyle(.white)
+                }
             }
             .padding(.horizontal, 8).padding(.vertical, 6)
             .background(.ultraThinMaterial.opacity(0.9))
             .environment(\.colorScheme, .dark)
-        default:
-            EmptyView()
+            .clipShape(UnevenRoundedRectangle(bottomLeadingRadius: 10, bottomTrailingRadius: 10))
         }
     }
 }

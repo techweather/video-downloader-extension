@@ -2,25 +2,47 @@ import SwiftUI
 import AppKit
 
 struct MainWindow: View {
-    @Environment(DownloadStore.self) private var store
+    @Environment(AppModel.self) private var model
     @AppStorage(Prefs.viewMode) private var mode: ViewMode = .list
     @State private var filter: SidebarFilter? = .all
     @State private var showQuickSettings = false
 
     var body: some View {
-        @Bindable var store = store
+        @Bindable var model = model
         NavigationSplitView {
             Sidebar(selection: $filter)
                 .navigationSplitViewColumnWidth(min: 170, ideal: 190, max: 240)
         } detail: {
             Group {
-                switch mode {
-                case .list: QueueList(filter: filter ?? .all)
-                case .gallery: LibraryGallery(filter: filter ?? .all)
+                switch model.connection {
+                case .connected:
+                    switch mode {
+                    case .list: QueueList(filter: filter ?? .all)
+                    case .gallery: LibraryGallery(filter: filter ?? .all)
+                    }
+                case .starting:
+                    ProgressView("Starting the download engine…")
+                        .frame(maxWidth: .infinity, maxHeight: .infinity)
+                case .otherAppRunning:
+                    ContentUnavailableView {
+                        Label("The old dlwithit is running", systemImage: "exclamationmark.triangle")
+                    } description: {
+                        Text("Quit the other copy of dlwithit (its icon is in the menu bar), then try again.")
+                    } actions: {
+                        Button("Try Again") { model.retryConnection() }
+                    }
+                case .failed(let message):
+                    ContentUnavailableView {
+                        Label("Couldn't start downloads", systemImage: "exclamationmark.triangle")
+                    } description: {
+                        Text(message)
+                    } actions: {
+                        Button("Try Again") { model.retryConnection() }
+                    }
                 }
             }
             .navigationTitle("dlwithit")
-            .navigationSubtitle(store.statusLine)
+            .navigationSubtitle(model.statusLine)
         }
         .toolbar {
             ToolbarItem(placement: .principal) {
@@ -29,16 +51,17 @@ struct MainWindow: View {
                     Label("Gallery", systemImage: "square.grid.2x2").tag(ViewMode.gallery)
                 }
                 .pickerStyle(.segmented)
-                .help("Switch between the download list and the library gallery")
+                .help("Switch between the download list and the gallery of everything you've downloaded")
             }
             ToolbarItem {
                 Button {
-                    store.showAddLink = true
+                    model.showAddLink = true
                 } label: {
                     Label("Download Link", systemImage: "plus")
                 }
                 .help("Download a link (⌘L), or just paste one with ⌘V")
-                .popover(isPresented: $store.showAddLink, arrowEdge: .bottom) {
+                .disabled(model.connection != .connected)
+                .popover(isPresented: $model.showAddLink, arrowEdge: .bottom) {
                     AddLinkPopover()
                 }
             }
@@ -59,52 +82,61 @@ struct MainWindow: View {
         }
         // ⌘V anywhere in the window (outside a text field) downloads the copied link.
         .onPasteCommand(of: [.plainText, .url]) { _ in
-            if let link = Clipboard.link() { store.add(link: link) }
+            if let link = Clipboard.link() { model.addLink(link) }
+        }
+        .sheet(item: Binding(get: { model.picks.first }, set: { _ in })) { pick in
+            PickerSheet(pick: pick)
+        }
+        .alert(item: $model.alert) { alert in
+            Alert(title: Text(alert.title), message: Text(alert.message))
         }
     }
 }
 
 struct Sidebar: View {
     @Binding var selection: SidebarFilter?
-    @Environment(DownloadStore.self) private var store
+    @Environment(AppModel.self) private var model
 
     var body: some View {
+        let items = model.galleryItems
         List(selection: $selection) {
             Section("Downloads") {
-                row(.all, "tray.full")
-                row(.downloading, "arrow.down.circle")
-                row(.completed, "checkmark.circle")
-                row(.attention, "exclamationmark.triangle")
+                row(.all, "tray.full", items)
+                row(.downloading, "arrow.down.circle", items)
+                row(.completed, "checkmark.circle", items)
+                row(.attention, "exclamationmark.triangle", items)
             }
-            Section("Sources") {
-                ForEach(Source.allCases) { source in
-                    Label {
-                        Text(source.rawValue)
-                    } icon: {
-                        Circle().fill(source.tint).frame(width: 8, height: 8)
+            if !model.sources.isEmpty {
+                Section("Sources") {
+                    ForEach(model.sources, id: \.self) { source in
+                        Label {
+                            Text(source)
+                        } icon: {
+                            Circle().fill(sourceTint(source)).frame(width: 8, height: 8)
+                        }
+                        .badge(items.filter { $0.source == source }.count)
+                        .tag(SidebarFilter.source(source))
                     }
-                    .badge(store.count(.source(source)))
-                    .tag(SidebarFilter.source(source))
                 }
             }
         }
     }
 
-    private func row(_ f: SidebarFilter, _ icon: String) -> some View {
+    private func row(_ f: SidebarFilter, _ icon: String, _ items: [DisplayItem]) -> some View {
         Label(f.title, systemImage: icon)
-            .badge(store.count(f))
+            .badge(items.filter(f.matches).count)
             .tag(f)
     }
 }
 
 struct QueueList: View {
     let filter: SidebarFilter
-    @Environment(DownloadStore.self) private var store
+    @Environment(AppModel.self) private var model
 
     var body: some View {
-        let visible = store.queueItems.filter(filter.matches)
-        let active = visible.filter { $0.state.isActive }
-        let finished = visible.filter { !$0.state.isActive }
+        let visible = model.listItems.filter(filter.matches)
+        let active = visible.filter(\.isActive)
+        let finished = visible.filter { !$0.isActive }
 
         if visible.isEmpty {
             ContentUnavailableView {
@@ -126,7 +158,7 @@ struct QueueList: View {
                         HStack {
                             Text("Finished")
                             Spacer()
-                            Button("Clear") { withAnimation { store.clearFinished() } }
+                            Button("Clear") { model.clearFinished() }
                                 .buttonStyle(.borderless)
                                 .font(.callout)
                                 .help("Remove finished downloads from the list (⌘K). They stay in the Gallery.")
@@ -135,32 +167,36 @@ struct QueueList: View {
                 }
             }
             .listStyle(.inset)
-            .animation(.default, value: store.queueItems.map(\.id))
+            .animation(.default, value: model.jobs.map(\.id))
         }
     }
 }
 
 struct LibraryGallery: View {
     let filter: SidebarFilter
-    @Environment(DownloadStore.self) private var store
+    @Environment(AppModel.self) private var model
 
     var body: some View {
-        let visible = store.items.filter(filter.matches)
-        if visible.isEmpty {
-            ContentUnavailableView("No downloads here", systemImage: "square.grid.2x2")
-        } else {
-            ScrollView {
-                LazyVGrid(columns: [GridItem(.adaptive(minimum: 170, maximum: 260), spacing: 16)], spacing: 18) {
-                    ForEach(visible) { GalleryCard(item: $0) }
+        let visible = model.galleryItems.filter(filter.matches)
+        Group {
+            if visible.isEmpty {
+                ContentUnavailableView("No downloads here", systemImage: "square.grid.2x2",
+                                       description: Text("Everything you download shows up here, even after you clear the list."))
+            } else {
+                ScrollView {
+                    LazyVGrid(columns: [GridItem(.adaptive(minimum: 170, maximum: 260), spacing: 16)], spacing: 18) {
+                        ForEach(visible) { GalleryCard(item: $0) }
+                    }
+                    .padding(20)
                 }
-                .padding(20)
             }
         }
+        .onAppear { model.refreshLibrary() }
     }
 }
 
 struct AddLinkPopover: View {
-    @Environment(DownloadStore.self) private var store
+    @Environment(AppModel.self) private var model
     @State private var link = Clipboard.link() ?? ""
     @FocusState private var focused: Bool
 
@@ -178,7 +214,7 @@ struct AddLinkPopover: View {
                 .foregroundStyle(.secondary)
             HStack {
                 Spacer()
-                Button("Cancel") { store.showAddLink = false }
+                Button("Cancel") { model.showAddLink = false }
                     .keyboardShortcut(.cancelAction)
                 Button("Download", action: submit)
                     .keyboardShortcut(.defaultAction)
@@ -192,45 +228,43 @@ struct AddLinkPopover: View {
     private func submit() {
         let trimmed = link.trimmingCharacters(in: .whitespaces)
         guard !trimmed.isEmpty else { return }
-        store.add(link: trimmed)
-        store.showAddLink = false
+        model.addLink(trimmed)
+        model.showAddLink = false
     }
 }
 
 struct SaveLocationMenu: View {
-    @AppStorage(Prefs.saveFolder) private var folder = "Downloads/dlwithit"
+    @Environment(AppModel.self) private var model
 
     var body: some View {
         Menu {
-            Button("Show in Finder") {}
-            Button("Choose Folder…") {}
+            Button("Show in Finder") { model.showSaveFolder() }
+            Button("Choose Folder…") { model.chooseSaveFolder() }
+            if model.settings?.useCustomLocation == true {
+                Button("Use Downloads/dlwithit") { model.useDefaultSaveFolder() }
+            }
         } label: {
             HStack(spacing: 7) {
                 Image(systemName: "folder")
-                Text(folder)
+                Text(model.saveFolderName)
             }
             .padding(.horizontal, 6)
         }
-        .help("Where downloads are saved")
+        .help(model.settings?.savePath ?? "Where downloads are saved")
     }
 }
 
 struct QuickSettings: View {
-    @AppStorage(Prefs.convertWebM) private var convertWebM = true
-    @AppStorage(Prefs.keepOriginal) private var keepOriginal = false
-    @AppStorage(Prefs.organizeBySite) private var organizeBySite = true
-    @AppStorage(Prefs.metadata) private var metadata: MetadataOption = .none
+    @Environment(AppModel.self) private var model
 
     var body: some View {
         Form {
             Section {
-                Toggle("Convert WebM to MP4", isOn: $convertWebM)
-                Toggle("Keep the original file", isOn: $keepOriginal)
-                    .disabled(!convertWebM)
-                Toggle("Organize by site", isOn: $organizeBySite)
-                Picker("Metadata", selection: $metadata) {
-                    ForEach(MetadataOption.allCases) { Text($0.title).tag($0) }
-                }
+                EngineToggle("Convert WebM to MP4", key: "encode_vp9", value: \.encodeVp9)
+                EngineToggle("Keep the original file", key: "keep_original", value: \.keepOriginal)
+                    .disabled(model.settings?.encodeVp9 != true)
+                EngineToggle("Organize by site", key: "organize_by_platform", value: \.organizeByPlatform)
+                MetadataPicker()
             }
             Section {
                 SettingsLink {
@@ -248,12 +282,51 @@ struct QuickSettings: View {
         .scrollDisabled(true)
         .scrollIndicators(.never)
         .toggleStyle(.switch)
+        .disabled(model.settings == nil)
         .frame(width: 320)
         .fixedSize(horizontal: false, vertical: true)
         .onAppear {
             // AppKit gives the first switch keyboard focus (and a blue ring) when the
             // popover opens. Clear it; Tab still brings focus rings back for keyboard users.
             DispatchQueue.main.async { NSApp.keyWindow?.makeFirstResponder(nil) }
+        }
+    }
+}
+
+/// A switch bound to one of the engine's download settings.
+struct EngineToggle: View {
+    @Environment(AppModel.self) private var model
+    let title: String
+    let key: String
+    let value: KeyPath<EngineSettings, Bool>
+    var subtitle: String? = nil
+
+    init(_ title: String, key: String, value: KeyPath<EngineSettings, Bool>, subtitle: String? = nil) {
+        self.title = title
+        self.key = key
+        self.value = value
+        self.subtitle = subtitle
+    }
+
+    var body: some View {
+        let binding = Binding(
+            get: { model.settings?[keyPath: value] ?? false },
+            set: { model.updateSettings([key: $0]) })
+        Toggle(isOn: binding) {
+            Text(title)
+            if let subtitle { Text(subtitle) }
+        }
+    }
+}
+
+struct MetadataPicker: View {
+    @Environment(AppModel.self) private var model
+
+    var body: some View {
+        Picker("Metadata", selection: Binding(
+            get: { model.settings?.metadataOption ?? .none },
+            set: { model.updateSettings(["metadata_option": $0.rawValue]) })) {
+            ForEach(MetadataOption.allCases) { Text($0.title).tag($0) }
         }
     }
 }

@@ -70,6 +70,21 @@ def sidecar_outtmpl(media_dir, metadata_dir, base_filename):
     }
 
 
+def direct_video_filename(title, url):
+    """(name, extension) for a directly downloaded video file.
+
+    The name comes from the title, made safe for the filesystem. Titles taken
+    from a file name ("clip.mp4") lose their extension so it isn't doubled.
+    """
+    ext = os.path.splitext(urlparse(url).path)[1] or '.mp4'
+    safe_title = re.sub(r'[<>:"/\\|?*]', '-', title or '').strip()
+    stem, title_ext = os.path.splitext(safe_title)
+    if title_ext.lower() in ('.mp4', '.webm', '.mov', '.m4v', '.mkv', '.avi', '.ogv', ext.lower()):
+        safe_title = stem
+    safe_title = safe_title.strip().rstrip('.')[:100] or 'video'
+    return safe_title, ext
+
+
 def build_format_string(quality, extractor_key=None):
     """Return the yt-dlp format selector for a quality setting and site."""
     if quality == 'best' and extractor_key == 'ArchiveOrg':
@@ -800,12 +815,7 @@ class DownloadWorker(WorkerThread):
                     video_dir.mkdir(parents=True, exist_ok=True)
                     
                     # Generate filename - sanitize title for filesystem safety
-                    parsed = urlparse(download['url'])
-                    ext = os.path.splitext(parsed.path)[1] or '.mp4'
-                    safe_title = re.sub(r'[<>:"/\\|?*]', '-', title).strip().rstrip('.')
-                    if not safe_title:
-                        safe_title = 'video'
-                    safe_title = safe_title[:100]
+                    safe_title, ext = direct_video_filename(title, download['url'])
                     filename = f"{safe_title}{ext}"
                     
                     filepath = video_dir / filename

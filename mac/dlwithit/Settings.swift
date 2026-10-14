@@ -1,83 +1,79 @@
+import ServiceManagement
 import SwiftUI
 
-// UserDefaults keys. Names match the Qt app's settings where one exists.
+// App-only preferences, kept in UserDefaults. Download settings belong to the
+// engine (see EngineSettings) so the extension and app always agree on them.
 enum Prefs {
     static let viewMode = "view_mode"
-    static let saveFolder = "save_folder"
-    static let organizeBySite = "organize_by_platform"
-    static let metadata = "metadata_option"
-    static let convertWebM = "encode_vp9"
-    static let keepOriginal = "keep_original"
     static let showMenuBar = "show_in_tray"
     static let showInDock = "show_in_dock"
-    static let openAtLogin = "launch_at_login"
-}
-
-enum MetadataOption: String, CaseIterable, Identifiable {
-    case none, embedded, sidecar
-    var id: String { rawValue }
-    var title: String {
-        switch self {
-        case .none: "None"
-        case .embedded: "Embedded in file"
-        case .sidecar: "Sidecar files"
-        }
-    }
+    static let notify = "notify_when_done"
 }
 
 struct SettingsView: View {
-    @AppStorage(Prefs.saveFolder) private var folder = "Downloads/dlwithit"
-    @AppStorage(Prefs.organizeBySite) private var organizeBySite = true
-    @AppStorage(Prefs.metadata) private var metadata: MetadataOption = .none
-    @AppStorage(Prefs.convertWebM) private var convertWebM = true
-    @AppStorage(Prefs.keepOriginal) private var keepOriginal = false
+    @Environment(AppModel.self) private var model
     @AppStorage(Prefs.showMenuBar) private var showMenuBar = true
     @AppStorage(Prefs.showInDock) private var showInDock = true
-    @AppStorage(Prefs.openAtLogin) private var openAtLogin = false
+    @AppStorage(Prefs.notify) private var notify = true
+    @State private var openAtLogin = SMAppService.mainApp.status == .enabled
+    @State private var loginError: String?
 
     var body: some View {
         Form {
             Section("Downloads") {
                 LabeledContent("Save to") {
-                    Menu(folder) {
-                        Button("Show in Finder") {}
-                        Button("Choose Folder…") {}
+                    Menu(model.saveFolderName) {
+                        Button("Show in Finder") { model.showSaveFolder() }
+                        Button("Choose Folder…") { model.chooseSaveFolder() }
+                        if model.settings?.useCustomLocation == true {
+                            Button("Use Downloads/dlwithit") { model.useDefaultSaveFolder() }
+                        }
                     }
                     .fixedSize()
                 }
-                Toggle(isOn: $organizeBySite) {
-                    Text("Organize by site")
-                    Text("YouTube, Vimeo, Instagram… each get a folder")
-                }
-                Picker("Metadata", selection: $metadata) {
-                    ForEach(MetadataOption.allCases) { Text($0.title).tag($0) }
-                }
+                EngineToggle("Organize by site", key: "organize_by_platform", value: \.organizeByPlatform,
+                             subtitle: "YouTube, Vimeo, Instagram… each get a folder")
+                MetadataPicker()
             }
             Section("Video") {
-                Toggle(isOn: $convertWebM) {
-                    Text("Convert WebM to MP4 automatically")
-                    Text("Plays everywhere, including Premiere and QuickTime")
-                }
-                Toggle("Keep the original file", isOn: $keepOriginal)
-                    .disabled(!convertWebM)
+                EngineToggle("Convert WebM to MP4 automatically", key: "encode_vp9", value: \.encodeVp9,
+                             subtitle: "Plays everywhere, including Premiere and QuickTime")
+                EngineToggle("Keep the original file", key: "keep_original", value: \.keepOriginal)
+                    .disabled(model.settings?.encodeVp9 != true)
             }
+            .disabled(model.settings == nil)
+
             Section("App") {
                 Toggle("Show in menu bar", isOn: $showMenuBar)
                 Toggle("Show in Dock", isOn: $showInDock)
-                Toggle("Open at login", isOn: $openAtLogin)
+                    .onChange(of: showInDock) { _, visible in DockVisibility.apply(visible) }
+                Toggle(isOn: Binding(get: { openAtLogin }, set: setOpenAtLogin)) {
+                    Text("Open at login")
+                    if let loginError { Text(loginError).foregroundStyle(.red) }
+                }
+                Toggle("Notify when downloads finish", isOn: $notify)
             }
+
             Section("Updates") {
                 LabeledContent {
-                    Button("Check Now") {}
+                    if model.checkingForUpdates {
+                        ProgressView().controlSize(.small)
+                    } else if let info = model.updateInfo, info.appUpdateAvailable,
+                              let url = URL(string: info.releaseUrl) {
+                        Link("Get \(info.latestAppVersion)", destination: url)
+                    } else {
+                        Button("Check Now") { model.checkForUpdates() }
+                            .disabled(model.connection != .connected)
+                    }
                 } label: {
-                    Text("dlwithit 0.1 (prototype)")
-                    Text("Up to date")
+                    Text("dlwithit \(model.engineVersion ?? "")")
+                    Text(appUpdateLine)
                 }
                 LabeledContent {
                     EmptyView()
                 } label: {
                     Text("Download engine")
-                    Text("yt-dlp 2026.8.19 · updated with the app")
+                    Text(engineLine)
                 }
             }
         }
@@ -85,5 +81,39 @@ struct SettingsView: View {
         .toggleStyle(.switch)
         .frame(width: 480)
         .fixedSize(horizontal: false, vertical: true)
+    }
+
+    private var appUpdateLine: String {
+        guard let info = model.updateInfo else { return "Checks GitHub for a newer release" }
+        if info.latestAppVersion.isEmpty { return "Couldn't reach GitHub" }
+        return info.appUpdateAvailable ? "Version \(info.latestAppVersion) is available" : "Up to date"
+    }
+
+    private var engineLine: String {
+        let current = model.ytdlpVersion.map { "yt-dlp \($0)" } ?? "yt-dlp"
+        if let latest = model.updateInfo?.latestYtdlpVersion, !latest.isEmpty,
+           latest != model.ytdlpVersion {
+            return "\(current) · \(latest) arrives with the next dlwithit update"
+        }
+        return "\(current) · updated with the app"
+    }
+
+    private func setOpenAtLogin(_ on: Bool) {
+        do {
+            if on { try SMAppService.mainApp.register() } else { try SMAppService.mainApp.unregister() }
+            loginError = nil
+        } catch {
+            loginError = error.localizedDescription
+        }
+        openAtLogin = SMAppService.mainApp.status == .enabled
+    }
+}
+
+/// Showing or hiding the Dock icon (and the app switcher entry) while running.
+enum DockVisibility {
+    @MainActor
+    static func apply(_ visible: Bool) {
+        NSApp.setActivationPolicy(visible ? .regular : .accessory)
+        if visible { NSApp.activate() }
     }
 }

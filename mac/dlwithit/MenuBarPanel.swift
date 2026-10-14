@@ -2,24 +2,23 @@ import SwiftUI
 
 // The panel that drops down from the menu bar icon (direction B).
 struct MenuBarPanel: View {
-    @Environment(DownloadStore.self) private var store
+    @Environment(AppModel.self) private var model
     @Environment(\.openWindow) private var openWindow
 
     var body: some View {
-        let queue = store.queueItems
-        let now = queue.filter { $0.state.isActive }
-        let recent = Array(queue.filter { !$0.state.isActive }.prefix(4))
+        let items = model.listItems
+        let now = items.filter(\.isActive)
+        let recent = Array(items.filter { !$0.isActive }.prefix(4))
 
         VStack(alignment: .leading, spacing: 0) {
             HStack(spacing: 8) {
                 VStack(alignment: .leading, spacing: 1) {
                     Text("dlwithit").font(.headline)
-                    Text(store.statusLine).font(.caption).foregroundStyle(.secondary)
+                    Text(model.statusLine).font(.caption).foregroundStyle(.secondary)
                 }
                 Spacer()
                 IconButton(systemImage: "macwindow", help: "Open Window") {
-                    openWindow(id: "main")
-                    NSApp.activate(ignoringOtherApps: true)
+                    openMainWindow()
                 }
                 SettingsLink {
                     Image(systemName: "gearshape")
@@ -33,7 +32,23 @@ struct MenuBarPanel: View {
             }
             .padding(.horizontal, 14).padding(.top, 12).padding(.bottom, 8)
 
-            if now.isEmpty && recent.isEmpty {
+            if !model.picks.isEmpty {
+                Button {
+                    openMainWindow()
+                } label: {
+                    Label(model.picks.count == 1 ? "Choose videos to download…" : "\(model.picks.count) pages waiting for you to choose videos…",
+                          systemImage: "checklist")
+                }
+                .buttonStyle(.link)
+                .padding(.horizontal, 14).padding(.bottom, 6)
+            }
+
+            if model.connection != .connected {
+                Text(model.connection == .starting ? "Starting…" : "Not connected — open the window for details.")
+                    .font(.callout)
+                    .foregroundStyle(.secondary)
+                    .padding(14)
+            } else if now.isEmpty && recent.isEmpty {
                 Text("Right-click a video or image in your browser and choose dlwithit.")
                     .font(.callout)
                     .foregroundStyle(.secondary)
@@ -49,7 +64,7 @@ struct MenuBarPanel: View {
                 HStack {
                     header("Recent")
                     Spacer()
-                    Button("Clear") { withAnimation { store.clearFinished() } }
+                    Button("Clear") { model.clearFinished() }
                         .buttonStyle(.borderless)
                         .font(.caption)
                         .padding(.trailing, 14)
@@ -60,16 +75,23 @@ struct MenuBarPanel: View {
             Divider().padding(.top, 8)
             HStack(spacing: 6) {
                 Image(systemName: "folder")
-                Text("Saving to Downloads/dlwithit")
+                Text("Saving to \(model.saveFolderName)")
+                    .lineLimit(1)
+                    .truncationMode(.middle)
                 Spacer()
-                Button("Change") {}.buttonStyle(.borderless)
+                Button("Change") { model.chooseSaveFolder() }.buttonStyle(.borderless)
             }
             .font(.caption)
             .foregroundStyle(.secondary)
             .padding(.horizontal, 14).padding(.vertical, 10)
         }
         .frame(width: 340)
-        .animation(.default, value: store.queueItems.map(\.id))
+        .animation(.default, value: model.jobs.map(\.id))
+    }
+
+    private func openMainWindow() {
+        openWindow(id: "main")
+        NSApp.activate()
     }
 
     private func header(_ title: String) -> some View {
@@ -81,8 +103,8 @@ struct MenuBarPanel: View {
 }
 
 struct PanelRow: View {
-    let item: DownloadItem
-    @Environment(DownloadStore.self) private var store
+    let item: DisplayItem
+    @Environment(AppModel.self) private var model
 
     var body: some View {
         HStack(spacing: 10) {
@@ -90,24 +112,20 @@ struct PanelRow: View {
                 .frame(width: 48, height: 27)
             VStack(alignment: .leading, spacing: 3) {
                 Text(item.title).font(.callout.weight(.semibold)).lineLimit(1)
-                switch item.state {
-                case .downloading(let p): ProgressView(value: p).controlSize(.mini)
-                case .converting(let p): ProgressView(value: p).controlSize(.mini).tint(.purple)
-                default: EmptyView()
-                }
+                ItemProgress(item: item, size: .mini)
                 DetailLine(item: item).font(.caption2).lineLimit(1)
             }
             Spacer(minLength: 6)
             if item.canConvert {
-                Button("To MP4") { store.convert(item.id) }.controlSize(.mini)
+                Button("To MP4") { model.convert(item) }.controlSize(.mini)
             }
-            if item.state.isActive {
-                IconButton(systemImage: "xmark", help: "Cancel") { store.cancel(item.id) }
-            } else if item.state == .done {
-                IconButton(systemImage: "magnifyingglass", help: "Show in Finder") {}
+            if item.isActive {
+                IconButton(systemImage: "xmark", help: "Cancel") { model.cancel(item) }
+            } else if item.fileExists {
+                IconButton(systemImage: "magnifyingglass", help: "Show in Finder") { model.revealInFinder(item) }
             }
         }
         .padding(.horizontal, 14).padding(.vertical, 5)
-        .contextMenu { DownloadContextMenu(item: item, inLibrary: false) }
+        .contextMenu { DownloadContextMenu(item: item) }
     }
 }
