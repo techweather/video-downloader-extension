@@ -39,7 +39,7 @@ def get_ffmpeg_dir() -> Optional[str]:
         return os.path.join(contents_dir, 'Frameworks')
     return None
 
-from PyQt5.QtCore import QThread, pyqtSignal
+from .events import Signal, WorkerThread
 
 from .metadata import embed_video_metadata
 
@@ -243,17 +243,17 @@ def encode_video_to_h264(
     return encoder.encode_to_h264(input_path, keep_original, progress_callback)
 
 
-class EncodingWorker(QThread):
+class EncodingWorker(WorkerThread):
     """
     Worker thread for encoding videos in parallel with downloads.
     Processes encoding jobs from a queue while downloads continue.
     """
     # Signals for UI updates
-    encoding_started = pyqtSignal(str)  # download_id
-    encoding_progress = pyqtSignal(str, int, str)  # download_id, percent, status
-    encoding_complete = pyqtSignal(str, str)  # download_id, final_path
-    encoding_error = pyqtSignal(str, str)  # download_id, error_message
-    encoding_cancelled = pyqtSignal(str)  # download_id
+    encoding_started = Signal(str)  # download_id
+    encoding_progress = Signal(str, int, str)  # download_id, percent, status
+    encoding_complete = Signal(str, str)  # download_id, final_path
+    encoding_error = Signal(str, str)  # download_id, error_message
+    encoding_cancelled = Signal(str)  # download_id
 
     def __init__(self):
         super().__init__()

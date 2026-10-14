@@ -17,7 +17,7 @@ from urllib.parse import urlparse, unquote
 # the entire code path before get_executable_path() is ever called.
 os.environ.setdefault('YTDLP_NO_PLUGINS', '1')
 
-from PyQt5.QtCore import QThread, pyqtSignal
+from .events import Signal, WorkerThread
 import yt_dlp
 
 from .encoder import VideoEncoder, file_needs_encoding, get_ffmpeg_dir
@@ -141,16 +141,16 @@ class YtDlpLogger:
         self.skipped_filename = None
 
 
-class DownloadWorker(QThread):
-    progress_update = pyqtSignal(str, int, str)  # id, percent, status
-    download_complete = pyqtSignal(str, str)  # id, path
-    download_error = pyqtSignal(str, str)  # id, error
-    download_cancelled = pyqtSignal(str)  # id
-    status_update = pyqtSignal(str, str)  # id, status
-    playlist_detected = pyqtSignal(str, dict)  # download_id, playlist_data
-    download_skipped = pyqtSignal(str, str, str)  # download_id, reason, filepath
+class DownloadWorker(WorkerThread):
+    progress_update = Signal(str, int, str)  # id, percent, status
+    download_complete = Signal(str, str)  # id, path
+    download_error = Signal(str, str)  # id, error
+    download_cancelled = Signal(str)  # id
+    status_update = Signal(str, str)  # id, status
+    playlist_detected = Signal(str, dict)  # download_id, playlist_data
+    download_skipped = Signal(str, str, str)  # download_id, reason, filepath
     # Signal to request encoding in separate worker (download_id, filepath, keep_original, metadata_info)
-    encoding_needed = pyqtSignal(str, str, bool, dict)
+    encoding_needed = Signal(str, str, bool, dict)
     
     def __init__(self, download_queue):
         super().__init__()

@@ -31,6 +31,7 @@ from core.media_list import dedupe_videos
 from ui.components.download_item import DownloadItem
 from ui.components.video_selector import VideoSelectorDialog
 from ui.window_utils import bring_window_to_front, bring_dialog_to_front
+from ui.engine_bridge import on_main_thread
 
 
 class MainWindow(QMainWindow):
@@ -471,23 +472,23 @@ class MainWindow(QMainWindow):
         """Initialize the download worker thread and encoding worker"""
         # Initialize download worker
         self.worker = DownloadWorker(self.download_queue)
-        self.worker.progress_update.connect(self.update_progress)
-        self.worker.download_complete.connect(self.download_finished)
-        self.worker.download_error.connect(self.download_failed)
-        self.worker.download_cancelled.connect(self.download_cancelled)
-        self.worker.status_update.connect(self.update_status)
-        self.worker.playlist_detected.connect(self.handle_playlist_detected)
-        self.worker.download_skipped.connect(self.download_skipped_handler)
-        self.worker.encoding_needed.connect(self.queue_encoding_job)
+        self.worker.progress_update.connect(on_main_thread(self.update_progress))
+        self.worker.download_complete.connect(on_main_thread(self.download_finished))
+        self.worker.download_error.connect(on_main_thread(self.download_failed))
+        self.worker.download_cancelled.connect(on_main_thread(self.download_cancelled))
+        self.worker.status_update.connect(on_main_thread(self.update_status))
+        self.worker.playlist_detected.connect(on_main_thread(self.handle_playlist_detected))
+        self.worker.download_skipped.connect(on_main_thread(self.download_skipped_handler))
+        self.worker.encoding_needed.connect(on_main_thread(self.queue_encoding_job))
         self.worker.start()
 
         # Initialize encoding worker (runs in parallel with downloads)
         self.encoding_worker = EncodingWorker()
-        self.encoding_worker.encoding_started.connect(self.encoding_started_handler)
-        self.encoding_worker.encoding_progress.connect(self.encoding_progress_handler)
-        self.encoding_worker.encoding_complete.connect(self.encoding_complete_handler)
-        self.encoding_worker.encoding_error.connect(self.encoding_error_handler)
-        self.encoding_worker.encoding_cancelled.connect(self.encoding_cancelled_handler)
+        self.encoding_worker.encoding_started.connect(on_main_thread(self.encoding_started_handler))
+        self.encoding_worker.encoding_progress.connect(on_main_thread(self.encoding_progress_handler))
+        self.encoding_worker.encoding_complete.connect(on_main_thread(self.encoding_complete_handler))
+        self.encoding_worker.encoding_error.connect(on_main_thread(self.encoding_error_handler))
+        self.encoding_worker.encoding_cancelled.connect(on_main_thread(self.encoding_cancelled_handler))
         self.encoding_worker.start()
     
     def init_tray(self):
@@ -674,7 +675,7 @@ class MainWindow(QMainWindow):
     def _check_ytdlp_version(self):
         """Spawn a background thread to check for yt-dlp updates."""
         self._version_check_worker = VersionCheckWorker()
-        self._version_check_worker.finished.connect(self._on_version_check_done)
+        self._version_check_worker.finished.connect(on_main_thread(self._on_version_check_done))
         self._version_check_worker.start()
 
     def _on_version_check_done(self, latest):
@@ -712,8 +713,8 @@ class MainWindow(QMainWindow):
 
         self._install_worker = InstallUpdateWorker(self._ytdlp_latest_version)
         self._install_worker.status_update.connect(
-            lambda msg: self.ytdlp_status_label.setText(msg))
-        self._install_worker.finished.connect(self._on_install_finished)
+            on_main_thread(lambda msg: self.ytdlp_status_label.setText(msg)))
+        self._install_worker.finished.connect(on_main_thread(self._on_install_finished))
         self._install_worker.start()
 
     def _on_install_finished(self, success, message, new_version):
@@ -730,7 +731,7 @@ class MainWindow(QMainWindow):
     def _check_app_version(self):
         """Spawn a background thread to check for dlwithit app updates."""
         self._app_version_check_worker = AppVersionCheckWorker()
-        self._app_version_check_worker.finished.connect(self._on_app_version_check_done)
+        self._app_version_check_worker.finished.connect(on_main_thread(self._on_app_version_check_done))
         self._app_version_check_worker.start()
 
     def _on_app_version_check_done(self, latest, release_url):
