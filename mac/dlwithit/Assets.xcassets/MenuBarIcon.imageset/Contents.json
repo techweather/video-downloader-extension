@@ -2,17 +2,7 @@
   "images": [
     {
       "idiom": "universal",
-      "scale": "1x",
-      "filename": "trayIconTemplate.png"
-    },
-    {
-      "idiom": "universal",
-      "scale": "2x",
-      "filename": "trayIconTemplate@2x.png"
-    },
-    {
-      "idiom": "universal",
-      "scale": "3x"
+      "filename": "MenuBarIcon.svg"
     }
   ],
   "info": {
@@ -20,6 +10,7 @@
     "version": 1
   },
   "properties": {
+    "preserves-vector-representation": true,
     "template-rendering-intent": "template"
   }
 }
