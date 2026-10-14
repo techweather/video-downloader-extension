@@ -30,3 +30,6 @@ Thumbs.db
 build/
 dist/
 *.pkg
+# Xcode per-user state
+xcuserdata/
+*.xcworkspace/xcuserdata/
