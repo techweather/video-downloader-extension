@@ -32,9 +32,9 @@ def summarize_error(raw_error: str, limit: int = 55) -> str:
     clean = strip_ansi(raw_error or '')
     # yt-dlp errors always contain an 'ERROR: ...' line — extract just that
     for line in clean.splitlines():
-        line = line.strip()
-        if line.startswith('ERROR:'):
-            msg = line[6:].strip()
+        found = re.search(r'\bERROR:\s*(.*)', line)
+        if found:
+            msg = found.group(1).strip()
             msg = re.sub(r'^\[[^\]]+\]\s*', '', msg)   # strip [extractor] prefix
             msg = re.sub(r'https?://\S+', 'URL', msg)  # shorten URLs
             return msg[:limit] + '\u2026' if len(msg) > limit else msg
