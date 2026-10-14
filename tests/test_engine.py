@@ -140,7 +140,7 @@ class TestWorkerEvents:
         engine.worker.download_error.emit(job_id, 'ERROR: [youtube] abc: Private video\nmore detail')
         job = engine.get_job(job_id)
         assert job['state'] == 'failed'
-        assert job['error'] == 'abc: Private video'
+        assert job['error'] == 'This video is private'
         assert 'more detail' in job['error_detail']
         assert engine.library.entries()[0]['state'] == 'failed'
 
