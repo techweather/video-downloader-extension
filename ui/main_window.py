@@ -28,6 +28,7 @@ from core.app_updater import AppVersionCheckWorker, is_newer, notify_update_avai
 from core.macos import set_dock_visible, set_launch_at_login, refresh_dock_icon
 from core.url_router import classify_pasted_url
 from core.media_list import dedupe_videos
+from core.routing import route_picked_video
 from ui.components.download_item import DownloadItem
 from ui.components.video_selector import VideoSelectorDialog
 from ui.window_utils import bring_window_to_front, bring_dialog_to_front
@@ -907,67 +908,12 @@ class MainWindow(QMainWindow):
                     
                     # Process each selected video
                     for video_info in selected:
-                        url = video_info['url']
-                        video_type = video_info.get('type', 'direct')
-
-                        # Types from the extension that always mean direct file download.
-                        # Includes HTML MIME types (e.g. 'video/mp4' from <source type="...">)
-                        # and extension-defined type strings.
-                        DIRECT_TYPES = {
-                            'direct', 'srcset', 'data-attribute', 'script-json',
-                            'preload', 'mux', 'meta-tag',
-                            'video/mp4', 'video/webm', 'video/quicktime',
-                            'video/x-m4v', 'video/ogg', 'video/x-matroska',
-                        }
-
-                        # Check if this should use yt-dlp (HLS or platform URL)
-                        if (video_type == 'hls' or
-                            url.endswith('.m3u8') or
-                            'vimeo.com' in url or
-                            'youtube.com' in url or
-                            'youtu.be' in url or
-                            'instagram.com' in url or
-                            'tiktok.com' in url):
-                            # Platform video or HLS stream - use yt-dlp
-                            download_data = {
-                                'url': url,
-                                'title': video_info.get('original_title', video_info.get('title', 'Video')),
-                                'type': 'video',
-                                'pageUrl': data['pageUrl'],
-                                'source': data['source'],
-                                'thumbnail': video_info.get('thumbnail')
-                            }
-                            self.add_download(download_data)
+                        kind, download_data = route_picked_video(
+                            video_info, data['pageUrl'], data['source'], from_playlist=False)
+                        if kind == 'direct':
+                            self.add_direct_video_download(download_data)
                         else:
-                            # Determine if this is a direct file download.
-                            # Trust the extension's type field first; fall back to URL extension.
-                            is_direct_file = (
-                                video_type in DIRECT_TYPES or
-                                url.endswith(('.mp4', '.webm', '.mov', '.avi', '.mkv', '.m4v')) or
-                                any(ext in url.lower() for ext in ['.mp4?', '.webm?', '.mov?'])
-                            )
-
-                            if is_direct_file:
-                                # Direct file - use direct download
-                                download_data = {
-                                    'url': url,
-                                    'title': video_info.get('title', 'Video'),
-                                    'pageUrl': data['pageUrl'],
-                                    'source': data['source'],
-                                    'thumbnail': video_info.get('thumbnail')
-                                }
-                                self.add_direct_video_download(download_data)
-                            else:
-                                # Unknown format - use yt-dlp as last resort
-                                download_data = {
-                                    'url': url,
-                                    'title': video_info.get('title', 'Video'),
-                                    'type': 'video',
-                                    'pageUrl': data['pageUrl'],
-                                    'source': data['source'],
-                                    'thumbnail': video_info.get('thumbnail')
-                                }
-                                self.add_download(download_data)
+                            self.add_download(download_data)
                     
                     # Show batch notification
                     self.tray_icon.showMessage(
@@ -1020,66 +966,12 @@ class MainWindow(QMainWindow):
                     
                     # Process each selected video (same logic as handle_video_list)
                     for video_info in selected:
-                        url = video_info['url']
-                        video_type = video_info.get('type', 'direct')
-
-                        DIRECT_TYPES = {
-                            'direct', 'srcset', 'data-attribute', 'script-json',
-                            'preload', 'mux', 'meta-tag',
-                            'video/mp4', 'video/webm', 'video/quicktime',
-                            'video/x-m4v', 'video/ogg', 'video/x-matroska',
-                        }
-
-                        # Check if this should use yt-dlp (HLS or platform URL)
-                        if (video_type == 'hls' or
-                            url.endswith('.m3u8') or
-                            'vimeo.com' in url or
-                            'youtube.com' in url or
-                            'youtu.be' in url or
-                            'instagram.com' in url or
-                            'tiktok.com' in url):
-                            # Platform video or HLS stream - use yt-dlp
-                            download_data = {
-                                'url': url,
-                                'title': video_info.get('original_title', video_info.get('title', 'Video')),
-                                'type': 'video',
-                                'pageUrl': playlist_data['pageUrl'],
-                                'source': playlist_data['source'],
-                                'thumbnail': video_info.get('thumbnail'),
-                                'skip_playlist_detection': True,
-                                'playlist_index': video_info.get('playlist_index')
-                            }
-                            self.add_download(download_data)
+                        kind, download_data = route_picked_video(
+                            video_info, playlist_data['pageUrl'], playlist_data['source'], from_playlist=True)
+                        if kind == 'direct':
+                            self.add_direct_video_download(download_data)
                         else:
-                            is_direct_file = (
-                                video_type in DIRECT_TYPES or
-                                url.endswith(('.mp4', '.webm', '.mov', '.avi', '.mkv', '.m4v')) or
-                                any(ext in url.lower() for ext in ['.mp4?', '.webm?', '.mov?'])
-                            )
-
-                            if is_direct_file:
-                                # Direct file - use direct download
-                                download_data = {
-                                    'url': url,
-                                    'title': video_info.get('title', 'Video'),
-                                    'pageUrl': playlist_data['pageUrl'],
-                                    'source': playlist_data['source'],
-                                    'thumbnail': video_info.get('thumbnail')
-                                }
-                                self.add_direct_video_download(download_data)
-                            else:
-                                # Unknown format - use yt-dlp as last resort
-                                download_data = {
-                                    'url': url,
-                                    'title': video_info.get('title', 'Video'),
-                                    'type': 'video',
-                                    'pageUrl': playlist_data['pageUrl'],
-                                    'source': playlist_data['source'],
-                                    'thumbnail': video_info.get('thumbnail'),
-                                    'skip_playlist_detection': True,
-                                    'playlist_index': video_info.get('playlist_index')
-                                }
-                                self.add_download(download_data)
+                            self.add_download(download_data)
                     
                     # Show batch notification
                     self.tray_icon.showMessage(
