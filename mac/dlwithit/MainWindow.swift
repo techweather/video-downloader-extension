@@ -205,8 +205,11 @@ struct SaveLocationMenu: View {
             Button("Show in Finder") {}
             Button("Choose Folder…") {}
         } label: {
-            Label(folder, systemImage: "folder")
-                .labelStyle(.titleAndIcon)
+            HStack(spacing: 7) {
+                Image(systemName: "folder")
+                Text(folder)
+            }
+            .padding(.horizontal, 6)
         }
         .help("Where downloads are saved")
     }
@@ -247,6 +250,11 @@ struct QuickSettings: View {
         .toggleStyle(.switch)
         .frame(width: 320)
         .fixedSize(horizontal: false, vertical: true)
+        .onAppear {
+            // AppKit gives the first switch keyboard focus (and a blue ring) when the
+            // popover opens. Clear it; Tab still brings focus rings back for keyboard users.
+            DispatchQueue.main.async { NSApp.keyWindow?.makeFirstResponder(nil) }
+        }
     }
 }
 

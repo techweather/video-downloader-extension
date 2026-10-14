@@ -29,9 +29,13 @@ struct DlwithitApp: App {
             }
         }
 
-        MenuBarExtra("dlwithit", systemImage: "arrow.down.circle", isInserted: $showMenuBar) {
+        MenuBarExtra(isInserted: $showMenuBar) {
             MenuBarPanel()
                 .environment(store)
+        } label: {
+            // The original "deal with it" template icon from assets/, tinted by macOS.
+            Image("MenuBarIcon")
+                .accessibilityLabel("dlwithit")
         }
         .menuBarExtraStyle(.window)
 
