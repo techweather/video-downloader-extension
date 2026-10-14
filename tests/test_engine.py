@@ -172,6 +172,23 @@ class TestWorkerEvents:
         assert engine.get_job(a)['file_path'] == '/x/a.mp4'
         assert engine.get_job(b)['state'] == 'cancelled'
 
+    def test_rapid_progress_is_throttled_but_kept(self, engine):
+        job_id = engine.submit(video_payload())['job_id']
+        engine.worker.progress_update.emit(job_id, 1, 'a')     # state change: published
+        for pct in range(2, 50):
+            engine.worker.progress_update.emit(job_id, pct, 'b')
+        published = [e for e in engine.events if e[0] == 'job' and e[1] == job_id]
+        assert len(published) == 2                              # queued, then downloading
+        assert engine.get_job(job_id)['progress'] == 0.49       # latest value still stored
+        engine.worker.download_complete.emit(job_id, '/x/a.mp4')
+        assert engine.events[-1] == ('job', job_id, 'done')     # state changes never wait
+
+    def test_title_from_ytdlp_replaces_placeholder(self, engine):
+        job_id = engine.submit_link('https://www.youtube.com/watch?v=abc')['job_id']
+        assert engine.get_job(job_id)['title'] == 'https://www.youtube.com/watch?v=abc'
+        engine.worker.status_update.emit(job_id, 'title:Real Title')
+        assert engine.get_job(job_id)['title'] == 'Real Title'
+
     def test_events_for_unknown_jobs_are_ignored(self, engine):
         engine.worker.progress_update.emit('nope', 10, 'x')
         engine.worker.download_complete.emit('nope', '/x')

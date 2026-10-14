@@ -1084,6 +1084,9 @@ class MainWindow(QMainWindow):
                 # Extract and load thumbnail URL
                 thumbnail_url = status.replace('thumbnail:', '')
                 widget.load_thumbnail(thumbnail_url)
+            elif status.startswith('title:'):
+                title = status[len('title:'):]
+                widget.title_label.setText(f"<b>{title[:50]}...</b>" if len(title) > 50 else f"<b>{title}</b>")
             elif status == 'downloading':
                 widget.set_downloading()
                 widget.status_label.setText("Downloading...")

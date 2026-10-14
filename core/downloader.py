@@ -1161,6 +1161,9 @@ class DownloadWorker(WorkerThread):
                         if thumbnail_url:
                             # Emit thumbnail URL to update the UI
                             self.status_update.emit(self.current_download_id, f'thumbnail:{thumbnail_url}')
+                        # Real title, so a pasted link's placeholder name gets replaced
+                        if info.get('title') and not ytdlp_title_is_useless:
+                            self.status_update.emit(self.current_download_id, f"title:{info['title']}")
                         
                     
                     # Download the video

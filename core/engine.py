@@ -39,6 +39,10 @@ from .media_list import dedupe_videos, merge_video_lists
 from .routing import route_picked_video, source_name
 from .url_router import classify_pasted_url
 
+# Progress-only updates are published at most this often per job; state
+# changes always go out at once. yt-dlp reports progress many times a second.
+PROGRESS_INTERVAL = 0.25
+
 ACTIVE_STATES = frozenset({'queued', 'preparing', 'downloading', 'merging', 'converting'})
 FINISHED_STATES = frozenset({'done', 'skipped', 'failed', 'cancelled'})
 
@@ -76,6 +80,7 @@ class Engine:
         self._requests = {}         # id -> (queue item, is_direct), kept for retry
         self._picks = {}
         self._counter = itertools.count(1)
+        self._last_publish = {}     # id -> monotonic time of last published snapshot
         self.library = library if library is not None else Library()
         self._settings_store = settings_store
 
@@ -147,7 +152,7 @@ class Engine:
                 "Video Download or Pick Images instead.")
         return self.submit({
             'url': url, 'type': kind, 'pageUrl': url,
-            'title': os.path.basename(urlparse(url).path) or 'Pasted link',
+            'title': (os.path.basename(urlparse(url).path) or url) if kind == 'image' else url,
         })
 
     def cancel(self, job_id):
@@ -337,6 +342,11 @@ class Engine:
                 return None
             job.update(fields)
             snapshot = dict(job)
+            now = time.monotonic()
+            if set(fields) <= {'progress', 'status_text'}:
+                if now - self._last_publish.get(job_id, 0) < PROGRESS_INTERVAL:
+                    return snapshot
+            self._last_publish[job_id] = now
         if snapshot['state'] in FINISHED_STATES and 'state' in fields:
             self.library.record(snapshot)
         self.job_changed.emit(snapshot)
@@ -395,6 +405,8 @@ class Engine:
     def _on_status(self, job_id, status):
         if status.startswith('thumbnail:'):
             self._update(job_id, thumbnail=status[len('thumbnail:'):])
+        elif status.startswith('title:'):
+            self._update(job_id, title=status[len('title:'):])
         elif status == 'downloading':
             self._update(job_id, state='downloading', status_text='Downloading…')
         elif status == 'merging':
