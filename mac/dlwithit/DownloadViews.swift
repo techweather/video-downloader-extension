@@ -140,6 +140,9 @@ struct DownloadRow: View {
                 Button("Convert to MP4") { model.convert(item) }
                     .controlSize(.small)
             }
+            if item.isFailed && item.origin == .job {
+                IconButton(systemImage: "info", help: "Error Details") { model.showErrorDetails(item) }
+            }
             if item.isFailed || item.state == .cancelled {
                 Button("Retry") { model.retry(item) }
                     .controlSize(.small)
@@ -192,7 +195,7 @@ struct DownloadContextMenu: View {
             Button("Retry") { model.retry(item) }
         }
         if item.origin == .job && item.isFailed {
-            Button("Report Error…") { model.reportError(item) }
+            Button("Error Details…") { model.showErrorDetails(item) }
         }
         Divider()
         if item.isActive {

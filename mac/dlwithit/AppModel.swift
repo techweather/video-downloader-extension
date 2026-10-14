@@ -214,10 +214,20 @@ final class AppModel {
         perform("Couldn't clear the list") { try await $0.post("app/jobs/clear-finished") }
     }
 
-    func reportError(_ item: DisplayItem) {
-        perform("Couldn't send the report") { client in
+    /// The failed download whose error details are showing (with Copy / Send Report).
+    var errorDetailsItem: DisplayItem?
+
+    func showErrorDetails(_ item: DisplayItem) {
+        errorDetailsItem = item
+    }
+
+    func sendErrorReport(_ item: DisplayItem) async -> Bool {
+        guard let client else { return false }
+        do {
             try await client.post("app/jobs/\(item.id)/report")
-            self.alert = AlertMessage(title: "Report sent", message: "Thanks — this helps fix downloads from \(item.source).")
+            return true
+        } catch {
+            return false
         }
     }
 

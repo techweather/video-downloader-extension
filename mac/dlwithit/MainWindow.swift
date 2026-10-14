@@ -87,6 +87,9 @@ struct MainWindow: View {
         .sheet(item: Binding(get: { model.picks.first }, set: { _ in })) { pick in
             PickerSheet(pick: pick)
         }
+        .sheet(item: $model.errorDetailsItem) { item in
+            ErrorDetailsSheet(item: item)
+        }
         .alert(item: $model.alert) { alert in
             Alert(title: Text(alert.title), message: Text(alert.message))
         }

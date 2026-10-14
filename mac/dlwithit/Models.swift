@@ -128,6 +128,7 @@ struct DisplayItem: Identifiable, Equatable {
     var progress: Double?
     var statusText: String
     var error: String?
+    var errorDetail: String?
     var canConvert: Bool
 
     var isActive: Bool { state.isActive }
@@ -148,6 +149,7 @@ struct DisplayItem: Identifiable, Equatable {
         progress = job.progress
         statusText = job.statusText
         error = job.error
+        errorDetail = job.errorDetail
         canConvert = job.canConvert && job.state == .done
     }
 
@@ -166,6 +168,7 @@ struct DisplayItem: Identifiable, Equatable {
         progress = nil
         statusText = ""
         error = entry.error
+        errorDetail = nil
         canConvert = false
     }
 

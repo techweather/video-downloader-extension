@@ -72,15 +72,29 @@ private struct WindowOpener: View {
 final class AppDelegate: NSObject, NSApplicationDelegate, UNUserNotificationCenterDelegate {
     let model = AppModel()
 
+    private var launchedAtLogin = false
+
     func applicationWillFinishLaunching(_ notification: Notification) {
         if UserDefaults.standard.object(forKey: Prefs.showInDock) as? Bool == false {
             NSApp.setActivationPolicy(.accessory)
         }
+        // Opened as a login item: start quietly in the menu bar, no window.
+        let event = NSAppleEventManager.shared().currentAppleEvent
+        launchedAtLogin = event?.eventID == kAEOpenApplication
+            && event?.paramDescriptor(forKeyword: keyAEPropData)?.enumCodeValue == keyAELaunchedAsLogInItem
     }
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         model.onJobFinished = { [weak self] job in self?.notify(job) }
         model.start()
+        if launchedAtLogin {
+            DispatchQueue.main.async {
+                // At launch the only titled window is the main one (the menu bar panel isn't titled).
+                for window in NSApp.windows where window.isVisible && window.styleMask.contains(.titled) {
+                    window.close()
+                }
+            }
+        }
 
         let center = UNUserNotificationCenter.current()
         center.delegate = self
