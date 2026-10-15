@@ -225,6 +225,31 @@ struct ClearRecentButton: View {
     }
 }
 
+/// Offers to forget library entries whose files are gone, when there are any in view.
+struct RemoveMissingButton: View {
+    let items: [DisplayItem]
+    @Environment(AppModel.self) private var model
+    @State private var confirming = false
+
+    var body: some View {
+        let missing = items.filter(\.isMissing).count
+        if missing > 0 {
+            Button("Remove \(missing) Missing…") { confirming = true }
+                .buttonStyle(.borderless)
+                .font(.callout)
+                .help("These files were moved off this disk or deleted.")
+                .confirmationDialog(
+                    "Remove \(missing) missing \(missing == 1 ? "item" : "items") from the Library?",
+                    isPresented: $confirming
+                ) {
+                    Button("Remove", role: .destructive) { model.removeMissing() }
+                } message: {
+                    Text("Their files were moved off this disk or deleted, so dlwithit can't find them. Nothing on disk changes. To keep one, right-click it and choose Locate….")
+                }
+        }
+    }
+}
+
 struct ItemList: View {
     let collection: Collection
     let items: [DisplayItem]
@@ -255,7 +280,15 @@ struct ItemList: View {
                     }
                 }
             } else {
-                ForEach(items) { DownloadRow(item: $0).tag($0.id) }
+                Section {
+                    ForEach(items) { DownloadRow(item: $0).tag($0.id) }
+                } header: {
+                    HStack {
+                        Text(items.count == 1 ? "1 item" : "\(items.count) items")
+                        Spacer()
+                        RemoveMissingButton(items: items)
+                    }
+                }
             }
         }
         .listStyle(.inset)
@@ -318,7 +351,7 @@ struct ItemGallery: View {
                     .font(.callout)
                     .foregroundStyle(.secondary)
                 Spacer()
-                if collection == .recent { ClearRecentButton() }
+                if collection == .recent { ClearRecentButton() } else { RemoveMissingButton(items: items) }
                 Picker("Thumbnails", selection: $fit) {
                     Image(systemName: "rectangle.fill").help("Fill: crop each picture to its tile").tag(false)
                     Image(systemName: "rectangle.center.inset.filled").help("Fit: show the whole picture").tag(true)

@@ -141,7 +141,16 @@ final class AppModel {
     // MARK: - Derived
 
     /// This session's downloads (the clearable list), newest first.
-    var recentItems: [DisplayItem] { jobs.map(DisplayItem.init(job:)) }
+    var recentItems: [DisplayItem] {
+        // A finished job's file may have been followed to a new place by the library.
+        let paths = Dictionary(library.compactMap { e in e.filePath.map { (e.id, $0) } },
+                               uniquingKeysWith: { a, _ in a })
+        return jobs.map { job in
+            var job = job
+            if let moved = paths[job.id], !job.state.isActive { job.filePath = moved }
+            return DisplayItem(job: job)
+        }
+    }
 
     /// Everything: what's still in progress, then the library.
     var libraryItems: [DisplayItem] {
@@ -299,9 +308,58 @@ final class AppModel {
         guard let client else { return }
         libraryRefresh?.cancel()
         libraryRefresh = Task {
-            if let entries: [LibraryEntry] = try? await client.get("app/library") {
+            if var entries: [LibraryEntry] = try? await client.get("app/library") {
+                await followMovedFiles(&entries, client: client)
                 library = entries
             }
+        }
+    }
+
+    /// Track files that are where we expect; for ones that aren't, ask macOS where they went
+    /// and tell the engine the new location.
+    private func followMovedFiles(_ entries: inout [LibraryEntry], client: EngineClient) async {
+        let bookmarks = FileBookmarks.shared
+        for i in entries.indices {
+            guard let path = entries[i].filePath else { continue }
+            if entries[i].exists {
+                bookmarks.remember(id: entries[i].id, path: path)
+            } else if let moved = bookmarks.currentPath(id: entries[i].id), moved != path {
+                let _: LibraryEntry? = try? await client.patch("app/library/\(entries[i].id)", ["file_path": moved])
+                entries[i].filePath = moved
+                entries[i].exists = true
+            }
+        }
+        bookmarks.save()
+    }
+
+    /// Point a missing download at where the user says the file is now.
+    func locate(_ item: DisplayItem) {
+        let panel = NSOpenPanel()
+        panel.canChooseFiles = true
+        panel.canChooseDirectories = false
+        panel.prompt = "Use This File"
+        panel.message = "Where is “\(item.title)” now?"
+        if let old = item.filePath {
+            let folder = URL(fileURLWithPath: old).deletingLastPathComponent()
+            if FileManager.default.fileExists(atPath: folder.path) { panel.directoryURL = folder }
+        }
+        guard panel.runModal() == .OK, let url = panel.url else { return }
+        perform("Couldn't update that download") { client in
+            let _: LibraryEntry = try await client.patch("app/library/\(item.id)", ["file_path": url.path])
+            FileBookmarks.shared.replace(id: item.id, path: url.path)
+            FileBookmarks.shared.save()
+            self.refreshLibrary()
+        }
+    }
+
+    /// Forget every library entry whose file is gone. The files themselves are already gone.
+    func removeMissing() {
+        perform("Couldn't tidy the library") { client in
+            struct Removed: Decodable { let removed: [String] }
+            let result: Removed = try await client.post("app/library/remove-missing")
+            FileBookmarks.shared.forget(ids: result.removed)
+            FileBookmarks.shared.save()
+            self.refreshLibrary()
         }
     }
 

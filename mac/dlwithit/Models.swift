@@ -140,6 +140,8 @@ struct DisplayItem: Identifiable, Equatable {
         return ext.isEmpty ? (isImage ? "IMAGE" : "VIDEO") : ext
     }
     var isFailed: Bool { state == .failed }
+    /// Downloaded, but the file isn't where we last saw it (moved off this disk, or deleted).
+    var isMissing: Bool { (state == .done || state == .skipped) && filePath != nil && !fileExists }
 
     init(job: Job) {
         id = job.id
@@ -194,7 +196,7 @@ struct DisplayItem: Identifiable, Equatable {
             if fileCount > 1 { return "\(source) · \(fileCount) files" }
             var parts = [source]
             if let path = filePath {
-                if !fileExists { return "\(source) · File moved or deleted" }
+                if !fileExists { return "\(source) · Missing — moved or deleted" }
                 if let bytes = sizeBytes {
                     parts.append(ByteCountFormatter.string(fromByteCount: bytes, countStyle: .file))
                 }

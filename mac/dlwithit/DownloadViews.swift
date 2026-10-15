@@ -195,6 +195,9 @@ struct DownloadContextMenu: View {
             Button("Open") { model.open(item) }
             Button("Show in Finder") { model.revealInFinder(item) }
         }
+        if item.isMissing && item.origin == .library {
+            Button("Locate…") { model.locate(item) }
+        }
         if item.canConvert {
             Button("Convert to MP4") { model.convert(item) }
         }
@@ -247,7 +250,8 @@ struct GalleryCard: View {
     }
 
     @ViewBuilder private var badge: some View {
-        let text: String? = item.fileCount > 1 ? "\(item.fileCount) files"
+        let text: String? = item.isMissing ? "Missing"
+            : item.fileCount > 1 ? "\(item.fileCount) files"
             : item.canConvert ? "WebM" : nil
         if let text {
             Text(text)
