@@ -48,8 +48,8 @@ struct MainWindow: View {
             // How to show it — like Finder's view and sort buttons, on the trailing side.
             ToolbarItem {
                 Picker("View", selection: $mode) {
-                    Label("List", systemImage: "list.bullet").tag(ViewMode.list)
-                    Label("Gallery", systemImage: "square.grid.2x2").tag(ViewMode.gallery)
+                    Label("List", systemImage: "list.bullet").accessibilityLabel("List").tag(ViewMode.list)
+                    Label("Gallery", systemImage: "square.grid.2x2").accessibilityLabel("Gallery").tag(ViewMode.gallery)
                 }
                 .pickerStyle(.segmented)
                 .help("Show as a list or a gallery")
@@ -410,8 +410,10 @@ struct ItemGallery: View {
             Spacer()
             if collection == .recent { ClearRecentButton() } else { RemoveMissingButton(items: items) }
             Picker("Thumbnails", selection: $fit) {
-                Image(systemName: "rectangle.fill").help("Fill: crop each picture to its tile").tag(false)
-                Image(systemName: "rectangle.center.inset.filled").help("Fit: show the whole picture").tag(true)
+                Image(systemName: "rectangle.fill").help("Fill: crop each picture to its tile")
+                    .accessibilityLabel("Fill").tag(false)
+                Image(systemName: "rectangle.center.inset.filled").help("Fit: show the whole picture")
+                    .accessibilityLabel("Fit").tag(true)
             }
             .pickerStyle(.segmented)
             .labelsHidden()
