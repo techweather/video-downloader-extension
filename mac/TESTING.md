@@ -1,53 +1,46 @@
 # Testing the new Mac app
 
-About 15 minutes. Tick what works, note what doesn't.
+Claude tested everything it could drive on 2026-10-14 (list at the bottom). What's left needs your hands: about 10 minutes.
 
 ## Before you start
 
-1. **Quit the old dlwithit** (menu bar icon → Quit). Only one app can talk to the extension at a time. If the old one is running, the new one shows "The old dlwithit is running" and waits.
-2. **Open the new app** (self-contained build, engine inside):
+1. **Quit the old dlwithit** (its menu bar icon → Quit). Only one app can talk to the extension at a time.
+2. Open the new app:
    ```bash
    open /Users/seanstarkweather/01_Projects/dlwithit/mac/build/Release/dlwithit.app
    ```
-   Or open `mac/dlwithit.xcodeproj` in Xcode and press ⌘R (Debug: runs the repo's Python, so code changes need no rebuild).
-3. The first launch asks whether dlwithit may send notifications. Allow it to test notifications.
+3. If a macOS dialog says **"claude" would like to control this Mac**, click **Don't Allow**. Claude triggered it by accident; nothing needs it.
 
-## The checklist
+## Your list
 
-**From the browser (the real workflow)**
-- [ ] Right-click a YouTube video → Video Download. Row appears, shows the real title and thumbnail, progress moves, finishes.
-- [ ] Same on a Vimeo-heavy portfolio page (e.g. andrewsiner.com). A **picker sheet** opens listing the videos. Untick a few, download the rest.
-- [ ] Pick Images on any page with photos. Images land, with thumbnails.
-- [ ] A page where the extension has to scan (no YouTube/Vimeo embed). Picker appears.
-- [ ] Switch to another app while something downloads. A notification arrives when it finishes.
+- [ ] **Turn on notifications:** System Settings › Notifications › dlwithit (it's set to *Denied*), then switch to another app during a download. A "Downloaded" banner should appear when it finishes.
+- [ ] **The extension, for real**, in Chrome *and* Firefox (keep the new app open — the wake link still opens the old app):
+  - [ ] Right-click → Video Download on a YouTube video.
+  - [ ] Same on a portfolio page with several Vimeo embeds → picker appears.
+  - [ ] Pick Images → images land.
+  - [ ] The keyboard shortcuts (Chrome ⌘⌃1/2, Firefox ⌘F1/F2).
+- [ ] **Menus** (Claude's clicks can't open menus on this Mac):
+  - [ ] Menu bar icon → the panel shows progress, Recent, Clear, Open Window.
+  - [ ] Right-click a download row → Open, Show in Finder, Copy Original Link, Remove.
+  - [ ] Settings › Save to › Choose Folder… → pick a folder, then switch back.
+- [ ] *(Optional)* Open at login: turn it on, log out and in. The app should start in the menu bar with no window. Then turn it off again if you don't want it.
 
-**In the window**
-- [ ] **List | Gallery** switch. The Gallery shows everything you've downloaded, including earlier today, with real thumbnails.
-- [ ] Sidebar: Downloading / Completed / Needs Attention / each source filter both views.
-- [ ] **+** button. The popover pre-fills a copied link. Download works.
-- [ ] Copy a link, click the window, press **⌘V**. It downloads.
-- [ ] Paste something with no media (e.g. a news homepage). You get a friendly explanation.
-- [ ] A failed download shows a short red reason, an **(i)** button (full details, Copy, Send Report) and **Retry**.
-- [ ] Cancel a running download.
-- [ ] **Clear** (Finished header, or ⌘K) empties finished rows. They stay in the Gallery.
-- [ ] Right-click a row: Open, Show in Finder, Copy Original Link, Remove.
-- [ ] Double-click a finished row opens the file.
-- [ ] Turn off auto-convert (gear), download a WebM (YouTube 4K often is). **Convert to MP4** appears on the row and works. Turn auto-convert back on.
+## Already verified by Claude
 
-**Settings and menu bar**
-- [ ] Gear popover and Settings window (⌘,) show your current settings, and changes stick after relaunch.
-- [ ] Save folder: Choose Folder… then Show in Finder.
-- [ ] Menu bar panel: progress, Recent, Clear, Open Window.
-- [ ] Settings › App: Show in Dock off and on, Show in menu bar off and on.
-- [ ] Open at login: on, log out and back in. The app starts in the menu bar with no window. Turn it off afterwards if you don't want it.
-- [ ] Updates › Check Now says "Up to date".
+Clicked through in the running app, the self-contained Release build with its bundled engine:
 
-**Quitting**
-- [ ] Quit (⌘Q). Then re-open. Everything still in the Gallery.
+- Engine starts with the app and stops when it quits. The library and settings survive a relaunch.
+- Downloads: YouTube, Vimeo (bundled curl_cffi), direct MP4/WebM/OGG, images; MP4 conversion with bundled ffmpeg (WebM, Theora); a YouTube title replacing the pasted link.
+- Picker sheet from a multi-embed page and from the extension's real DOM scan run on a live page (w3schools); untick, download selected.
+- List ↔ Gallery, sidebar filters, Quick Look thumbnails, Convert to MP4 button, Cancel, Retry, Clear (button and ⌘K), failed row with plain-English error, Error Details sheet (Copy; Send not pressed).
+- **+** popover (pre-filled link, friendly message for a page with no media), ⌘V paste.
+- Show in Finder selects the file.
+- Settings window: shows real settings, Check Now ("Up to date"), Show in Dock off/on, Show in menu bar off/on, Open at login registers and unregisters in System Settings.
+- The old Qt app still works with the shared engine code.
 
-## Known gaps (not bugs to report)
+## Known gaps (not bugs)
 
-- **The extension's "wake" link opens the old app** while it's installed in /Applications. Keep the new app open while testing.
-- Bundle id is still `com.dlwithit.prototype`. It switches to the real one when the new app replaces the old in the installer.
-- Not signed or notarized yet (needs Apple enrollment). Running it from the build folder is fine on this Mac.
-- WebM files show a colour placeholder instead of a thumbnail. macOS Quick Look can't preview WebM. Once converted to MP4 they get real thumbnails.
+- The extension's wake link opens the old app while it's installed in /Applications.
+- Bundle id is still `com.dlwithit.prototype`; not signed or notarized yet (needs Apple enrollment).
+- WebM files show a placeholder thumbnail (Quick Look can't preview WebM) until converted.
+- The extension's DOM scan guesses thumbnails from nearby images, so a page's unrelated picture can appear (seen on w3schools). Extension behaviour, unchanged.
