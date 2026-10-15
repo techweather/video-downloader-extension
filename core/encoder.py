@@ -71,13 +71,14 @@ def detect_video_codec(filepath: str) -> Optional[str]:
 
 def file_needs_encoding(filepath: str) -> bool:
     """
-    Check whether a downloaded file needs VP9/VP8/AV1 → H.264 encoding.
+    Check whether a downloaded file needs VP9/VP8/AV1/Theora → H.264 encoding.
 
     Uses ffprobe on the actual file, so this is reliable regardless of which
-    format yt-dlp selected during download.
+    format yt-dlp selected during download. Theora (.ogg/.ogv, still served by
+    some sites as an HTML5 fallback) plays in neither QuickTime nor Premiere.
     """
     codec = detect_video_codec(filepath)
-    return codec in ('vp9', 'vp8', 'av1', 'vp09', 'vp08', 'av01')
+    return codec in ('vp9', 'vp8', 'av1', 'vp09', 'vp08', 'av01', 'theora')
 
 
 class VideoEncoder:

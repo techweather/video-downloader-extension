@@ -99,7 +99,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate, UNUserNotificationCent
         let center = UNUserNotificationCenter.current()
         center.delegate = self
         if UserDefaults.standard.object(forKey: Prefs.notify) as? Bool ?? true {
-            center.requestAuthorization(options: [.alert, .sound]) { _, _ in }
+            center.requestAuthorization(options: [.alert, .sound]) { _, error in
+                if let error {
+                    engineLog.error("Notification permission request failed: \(error.localizedDescription, privacy: .public)")
+                }
+            }
         }
     }
 
@@ -120,7 +124,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate, UNUserNotificationCent
         content.title = job.state == .done ? "Downloaded" : "Download failed"
         content.body = job.state == .done ? job.title : "\(job.title) — \(job.error ?? "something went wrong")"
         let request = UNNotificationRequest(identifier: job.id, content: content, trigger: nil)
-        UNUserNotificationCenter.current().add(request)
+        UNUserNotificationCenter.current().add(request) { error in
+            if let error {
+                engineLog.error("Couldn't post notification: \(error.localizedDescription, privacy: .public)")
+            }
+        }
     }
 
     // Show banners even while the app is frontmost (it usually isn't).

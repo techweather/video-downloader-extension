@@ -108,7 +108,17 @@ private struct PickRow: View {
             if let s = f.string(from: d) { parts.append(s) }
         }
         if let u = video.uploader, !u.isEmpty { parts.append(u) }
+        // Pages often offer the same clip in several formats under one title.
+        if let format = Self.format(of: video.url) { parts.append(format) }
         parts.append(URL(string: video.url)?.host() ?? video.url)
         return parts.joined(separator: " · ")
+    }
+
+    /// "MP4", "WEBM", "Stream" (HLS) — from the link's file extension, if it has one.
+    private static func format(of link: String) -> String? {
+        guard let ext = URL(string: link)?.pathExtension.lowercased(), !ext.isEmpty else { return nil }
+        if ext == "m3u8" { return "Stream" }
+        let known: Set<String> = ["mp4", "webm", "mov", "m4v", "mkv", "ogg", "ogv", "avi"]
+        return known.contains(ext) ? ext.uppercased() : nil
     }
 }
