@@ -142,6 +142,8 @@ struct DisplayItem: Identifiable, Equatable {
     var isFailed: Bool { state == .failed }
     /// Downloaded, but the file isn't where we last saw it (moved off this disk, or deleted).
     var isMissing: Bool { (state == .done || state == .skipped) && filePath != nil && !fileExists }
+    /// Shown faded in list and gallery: nothing on disk to open (missing, failed, cancelled).
+    var isDimmed: Bool { !fileExists && !isActive }
 
     init(job: Job) {
         id = job.id

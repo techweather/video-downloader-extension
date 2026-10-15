@@ -127,6 +127,8 @@ struct DownloadRow: View {
         HStack(spacing: 12) {
             Thumbnail(item: item)
                 .frame(width: 80, height: 45)
+                .overlay(alignment: .topTrailing) { ThumbnailTag(item: item, compact: true) }
+                .opacity(item.isDimmed ? 0.55 : 1)
 
             VStack(alignment: .leading, spacing: 5) {
                 Text(item.title)
@@ -231,8 +233,8 @@ struct GalleryCard: View {
             Thumbnail(item: item, cornerRadius: 10, contentMode: contentMode)
                 .aspectRatio(16 / 9, contentMode: .fit)
                 .overlay(alignment: .bottom) { progressOverlay }
-                .overlay(alignment: .topTrailing) { badge }
-                .opacity(item.fileExists || item.isActive ? 1 : 0.55)
+                .overlay(alignment: .topTrailing) { ThumbnailTag(item: item) }
+                .opacity(item.isDimmed ? 0.55 : 1)
 
             VStack(alignment: .leading, spacing: 1) {
                 Text(item.title)
@@ -247,20 +249,6 @@ struct GalleryCard: View {
         .background(isSelected ? Color.accentColor.opacity(0.22) : .clear,
                     in: RoundedRectangle(cornerRadius: 14, style: .continuous))
         .contentShape(Rectangle())
-    }
-
-    @ViewBuilder private var badge: some View {
-        let text: String? = item.isMissing ? "Missing"
-            : item.fileCount > 1 ? "\(item.fileCount) files"
-            : item.canConvert ? "WebM" : nil
-        if let text {
-            Text(text)
-                .font(.caption2.weight(.semibold))
-                .padding(.horizontal, 7).padding(.vertical, 2)
-                .background(.black.opacity(0.5), in: Capsule())
-                .foregroundStyle(.white)
-                .padding(6)
-        }
     }
 
     @ViewBuilder private var progressOverlay: some View {
@@ -279,6 +267,26 @@ struct GalleryCard: View {
             .background(.ultraThinMaterial.opacity(0.9))
             .environment(\.colorScheme, .dark)
             .clipShape(UnevenRoundedRectangle(bottomLeadingRadius: 10, bottomTrailingRadius: 10))
+        }
+    }
+}
+
+/// Small label on a thumbnail's corner: Missing, several files, or WebM. Same in list and gallery.
+struct ThumbnailTag: View {
+    let item: DisplayItem
+    var compact = false             // the list's small thumbnails
+
+    var body: some View {
+        let text: String? = item.isMissing ? "Missing"
+            : item.fileCount > 1 ? "\(item.fileCount) files"
+            : item.canConvert ? "WebM" : nil
+        if let text {
+            Text(text)
+                .font(compact ? .system(size: 8, weight: .semibold) : .caption2.weight(.semibold))
+                .padding(.horizontal, compact ? 4 : 7).padding(.vertical, compact ? 1 : 2)
+                .background(.black.opacity(0.5), in: Capsule())
+                .foregroundStyle(.white)
+                .padding(compact ? 3 : 6)
         }
     }
 }
