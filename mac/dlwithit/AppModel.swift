@@ -217,7 +217,21 @@ final class AppModel {
     }
 
     func cancel(_ item: DisplayItem) { perform("Couldn't cancel") { try await $0.post("app/jobs/\(item.id)/cancel") } }
-    func retry(_ item: DisplayItem) { perform("Couldn't retry") { try await $0.post("app/jobs/\(item.id)/retry") } }
+    func retry(_ item: DisplayItem) {
+        switch item.origin {
+        case .job:
+            perform("Couldn't retry") { try await $0.post("app/jobs/\(item.id)/retry") }
+        case .library:
+            // The job is gone (cleared, or from an earlier session): download the link again,
+            // and once that's accepted, drop the failed entry so it isn't listed twice.
+            guard let url = item.url else { return }
+            perform("Couldn't retry") { client in
+                try await client.post("app/jobs", ["url": url])
+                self.library.removeAll { $0.id == item.id }
+                try await client.delete("app/library/\(item.id)")
+            }
+        }
+    }
     func convert(_ item: DisplayItem) { perform("Couldn't convert") { try await $0.post("app/jobs/\(item.id)/convert") } }
 
     func remove(_ item: DisplayItem) {

@@ -140,6 +140,8 @@ struct DisplayItem: Identifiable, Equatable {
         return ext.isEmpty ? (isImage ? "IMAGE" : "VIDEO") : ext
     }
     var isFailed: Bool { state == .failed }
+    /// Failed or cancelled, and there's a way to try again: the job itself, or its link.
+    var canRetry: Bool { (isFailed || state == .cancelled) && (origin == .job || url != nil) }
     /// Downloaded, but the file isn't where we last saw it (moved off this disk, or deleted).
     var isMissing: Bool { (state == .done || state == .skipped) && filePath != nil && !fileExists }
     /// Shown faded in list and gallery: nothing on disk to open (missing, failed, cancelled).

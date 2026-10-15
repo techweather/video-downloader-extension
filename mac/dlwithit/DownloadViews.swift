@@ -155,7 +155,7 @@ struct DownloadRow: View {
             if item.isFailed && item.origin == .job {
                 IconButton(systemImage: "info", help: "Error Details") { model.showErrorDetails(item) }
             }
-            if item.isFailed || item.state == .cancelled {
+            if item.canRetry {
                 Button("Retry") { model.retry(item) }
                     .controlSize(.small)
             }
@@ -206,7 +206,7 @@ struct DownloadContextMenu: View {
         if item.url != nil {
             Button("Copy Original Link") { model.copyLink(item) }
         }
-        if item.origin == .job && (item.isFailed || item.state == .cancelled) {
+        if item.canRetry {
             Button("Retry") { model.retry(item) }
         }
         if item.origin == .job && item.isFailed {
