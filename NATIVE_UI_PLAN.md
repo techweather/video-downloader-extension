@@ -68,6 +68,17 @@ dlwithit splits into a **headless Python engine** and **native shells**:
 - **Engine alone**: `DLWITHIT_TOKEN=devtoken .venv/bin/python3.12 engine_main.py`, then `curl -H 'X-Dlwithit-Token: devtoken' localhost:5555/app/state`.
 - Only one thing can own port 5555. If the old Qt dlwithit is running, the new app says so and waits for you to quit it. While the Qt app is installed in /Applications, the extension's `dlwithit://wake` link opens **it**, not the new app.
 - Engine output goes to `~/Library/Application Support/dlwithit/engine.log`; the library is `library.sqlite3` beside it.
+- File bookmarks for moved-file tracking live in `bookmarks.plist` beside it (keyed by download id).
+
+## Testing it as Claude (what works on this Mac)
+
+- **Clicks and keys** work through computer-use: background `app_*` tools for buttons, foreground `computer_batch` for keystrokes such as ⌘V and Space. Convert window coordinates as screen points × (1456 ÷ 3008) for the foreground frame.
+- **Menus never open from Claude's clicks**: right-click menus, the menu bar panel, `Menu` buttons such as Save to and Sort. Change `@AppStorage` settings with `defaults write com.dlwithit.prototype <key> …` to check what a menu would do, and leave the real click to Sean. The app's main menu bar works via `app_menu`.
+- **Screenshots**: the computer-use screenshot sometimes comes back black or misses windows. `screencapture -x` plus `sips` cropping is reliable.
+- **Every rebuild changes the app's ad-hoc signature**, so macOS may ask again for Downloads-folder access. That's Sean's to answer, and it blocks the window until he does. Signing will fix it.
+- **System log**: use `/usr/bin/log show …`. Bare `log` is a zsh builtin here.
+- **The extension itself** can't be triggered by Claude, because extension shortcuts and context menus live outside the page. To exercise the app side, POST the same payloads to `localhost:5555/download`, or run the extension's scan code in a page through Claude in Chrome's `javascript_tool`.
+- Only one app can own port 5555. Quit the old Qt dlwithit, or a dev `native_app.py`, before testing. A stray dev Qt process shows up as `Python … native_app.py`.
 
 ## Open questions
 
