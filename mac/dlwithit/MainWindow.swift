@@ -559,7 +559,7 @@ struct QuickSettings: View {
     var body: some View {
         Form {
             Section {
-                EngineToggle("Convert WebM to MP4", key: "encode_vp9", value: \.encodeVp9)
+                EngineToggle("Convert WebM to MP4 automatically", key: "encode_vp9", value: \.encodeVp9)
                 EngineToggle("Keep the original file", key: "keep_original", value: \.keepOriginal)
                     .disabled(model.settings?.encodeVp9 != true)
                 EngineToggle("Organize by site", key: "organize_by_platform", value: \.organizeByPlatform)
