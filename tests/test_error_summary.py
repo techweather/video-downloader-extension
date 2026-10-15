@@ -42,3 +42,12 @@ def test_common_failures_read_as_plain_english():
     assert summarize_error('ERROR: [vimeo] 1: Private video') == 'This video is private'
     assert summarize_error('requests.exceptions.HTTPError: 403 Client Error / HTTP Error 403') == \
         'The site refused the download (403)'
+
+
+def test_instagram_failures():
+    assert summarize_error("ERROR: could not find firefox cookies database in '/Users/x/Library'") == \
+        "Instagram needs your Firefox login, and dlwithit couldn't find it"
+    assert summarize_error('ERROR: [Instagram] DefpRhes-eW: No video formats found!; please report this issue') == \
+        "The site didn't offer a downloadable video"
+    assert summarize_error('ERROR: [Instagram] Dae8b: Instagram sent an empty media response.') == \
+        "Instagram sent nothing back — the post may be private or removed"

@@ -30,6 +30,9 @@ def redact_paths(text: str) -> str:
 # Plain-English lines for the failures people hit most. Checked in order against
 # the raw error text (case-insensitive); the first match wins.
 FRIENDLY_ERRORS = (
+    ('cookies database', "Instagram needs your Firefox login, and dlwithit couldn't find it"),
+    ('empty media response', "Instagram sent nothing back — the post may be private or removed"),
+    ('No video formats found', "The site didn't offer a downloadable video"),
     ('Unsupported URL', "No downloadable video found on this page"),
     ('only works when logged-in', "This video needs you to be logged in"),
     ('login required', "This video needs you to be logged in"),
