@@ -3,33 +3,46 @@ import SwiftUI
 
 /// Thumbnail for a download: the downloaded file itself once it exists (via Quick Look),
 /// otherwise the site's thumbnail URL, otherwise a tinted placeholder.
+///
+/// The frame's shape comes from whoever places it; the picture is laid over the frame and
+/// clipped, so a tall or wide image can never push past its slot. `.fill` crops to the
+/// frame; `.fit` shows the whole picture, letterboxed.
 struct Thumbnail: View {
     let item: DisplayItem
     var cornerRadius: CGFloat = 7
+    var contentMode: ContentMode = .fill
 
     @State private var fileImage: NSImage?
 
     var body: some View {
-        ZStack {
-            RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
-                .fill(sourceTint(item.source).opacity(0.35).gradient)
-            if let fileImage {
-                Image(nsImage: fileImage).resizable().scaledToFill()
-            } else if let url = item.thumbnailURL {
-                AsyncImage(url: url) { phase in
-                    if let image = phase.image {
-                        image.resizable().scaledToFill()
-                    } else {
-                        placeholderGlyph
-                    }
-                }
-            } else {
-                placeholderGlyph
+        RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
+            .fill(background)
+            .overlay { picture }
+            .clipShape(RoundedRectangle(cornerRadius: cornerRadius, style: .continuous))
+            .task(id: item.fileExists ? item.filePath : nil) {
+                fileImage = await ThumbnailCache.shared.image(for: item.fileExists ? item.filePath : nil)
             }
-        }
-        .clipShape(RoundedRectangle(cornerRadius: cornerRadius, style: .continuous))
-        .task(id: item.fileExists ? item.filePath : nil) {
-            fileImage = await ThumbnailCache.shared.image(for: item.fileExists ? item.filePath : nil)
+    }
+
+    private var background: AnyShapeStyle {
+        contentMode == .fit
+            ? AnyShapeStyle(Color.black.opacity(0.35))
+            : AnyShapeStyle(sourceTint(item.source).opacity(0.35).gradient)
+    }
+
+    @ViewBuilder private var picture: some View {
+        if let fileImage {
+            Image(nsImage: fileImage).resizable().aspectRatio(contentMode: contentMode)
+        } else if let url = item.thumbnailURL {
+            AsyncImage(url: url) { phase in
+                if let image = phase.image {
+                    image.resizable().aspectRatio(contentMode: contentMode)
+                } else {
+                    placeholderGlyph
+                }
+            }
+        } else {
+            placeholderGlyph
         }
     }
 
