@@ -2,8 +2,13 @@ import SwiftUI
 
 /// Choose which videos to download from a page or playlist with several of them.
 struct PickerSheet: View {
-    let pick: Pick
+    let initial: Pick
     @Environment(AppModel.self) private var model
+
+    init(pick: Pick) { initial = pick }
+
+    /// The latest version of this pick: real titles and thumbnails arrive after it opens.
+    private var pick: Pick { model.picks.first { $0.id == initial.id } ?? initial }
     @State private var selected: Set<Int> = []
     @State private var initialised = false
 

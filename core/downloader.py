@@ -929,7 +929,7 @@ class DownloadWorker(WorkerThread):
                             # Create playlist data structure
                             playlist_data = {
                                 'videos': videos,
-                                'pageTitle': f"Multiple Videos ({len(videos)} found)",
+                                'pageTitle': download.get('title') or f"Multiple Videos ({len(videos)} found)",
                                 'pageUrl': download['url'],
                                 'source': urlparse(download['url']).hostname or 'unknown'
                             }

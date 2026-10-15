@@ -31,7 +31,7 @@ def store():
 
 @pytest.fixture
 def engine(tmp_path, store):
-    eng = Engine(library=Library(tmp_path / 'lib.sqlite3'), settings_store=store)
+    eng = Engine(library=Library(tmp_path / 'lib.sqlite3'), settings_store=store, enrich=None)
     eng.events = []
     eng.job_changed.connect(lambda j: eng.events.append(('job', j['id'], j['state'])))
     eng.job_removed.connect(lambda i: eng.events.append(('removed', i)))

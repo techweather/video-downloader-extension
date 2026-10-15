@@ -23,6 +23,7 @@ choose which to download. The app shows a picker and answers resolve_pick().
 import itertools
 import os
 import threading
+from concurrent.futures import ThreadPoolExecutor
 import time
 from datetime import datetime
 from pathlib import Path
@@ -36,6 +37,7 @@ from .error_reporter import summarize_error
 from .events import Signal
 from .library import Library
 from .media_list import dedupe_videos, merge_video_lists
+from .pick_enrich import enrich_video, oembed_endpoint
 from .routing import route_picked_video, source_name
 from .url_router import classify_pasted_url
 
@@ -74,7 +76,8 @@ class Engine:
     pick_closed = Signal(str)       # pick id, once answered or dismissed
     settings_changed = Signal(dict)
 
-    def __init__(self, library=None, settings_store=Settings):
+    def __init__(self, library=None, settings_store=Settings, enrich=enrich_video):
+        """enrich: fills in a picker video's real title/thumbnail (None turns it off, e.g. in tests)."""
         self._lock = threading.RLock()
         self._jobs = {}             # id -> job, in the order they arrived
         self._requests = {}         # id -> (queue item, is_direct), kept for retry
@@ -83,6 +86,8 @@ class Engine:
         self._last_publish = {}     # id -> monotonic time of last published snapshot
         self.library = library if library is not None else Library()
         self._settings_store = settings_store
+        self._enrich = enrich
+        self._enriched = set()       # (pick id, video url) already looked up
 
         self.download_queue = Queue()
         self.worker = DownloadWorker(self.download_queue)
@@ -378,7 +383,33 @@ class Engine:
                 self._picks[pick['id']] = pick
                 snapshot = self._pick_snapshot(pick)
         self.pick_changed.emit(snapshot)
+        if self._enrich is not None:
+            threading.Thread(target=self._enrich_pick, args=(snapshot['id'],), daemon=True).start()
         return snapshot
+
+    def _enrich_pick(self, pick_id):
+        """Look up real titles and thumbnails for an open picker's videos and publish each answer."""
+        with self._lock:
+            pick = self._picks.get(pick_id)
+            todo = [] if pick is None else [
+                v for v in pick['videos']
+                if oembed_endpoint(v.get('url')) and (pick_id, v.get('url')) not in self._enriched]
+            self._enriched.update((pick_id, v.get('url')) for v in todo)
+        if not todo:
+            return
+        with ThreadPoolExecutor(max_workers=6) as pool:
+            for updated in pool.map(self._enrich, todo):
+                if updated is None:
+                    continue
+                with self._lock:
+                    pick = self._picks.get(pick_id)
+                    if pick is None:
+                        return      # answered or dismissed meanwhile
+                    for i, video in enumerate(pick['videos']):
+                        if video.get('url') == updated.get('url'):
+                            pick['videos'][i] = updated
+                    snapshot = self._pick_snapshot(pick)
+                self.pick_changed.emit(snapshot)
 
     @staticmethod
     def _pick_snapshot(pick):

@@ -20,7 +20,7 @@ AUTH = {TOKEN_HEADER: TOKEN}
 
 @pytest.fixture
 def engine(tmp_path):
-    eng = Engine(library=Library(tmp_path / 'lib.sqlite3'), settings_store=MemorySettings())
+    eng = Engine(library=Library(tmp_path / 'lib.sqlite3'), settings_store=MemorySettings(), enrich=None)
     yield eng
     eng.library.close()
 
