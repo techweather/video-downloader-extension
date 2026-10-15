@@ -66,11 +66,15 @@ struct ErrorDetailsSheet: View {
         }
         .padding(20)
         .frame(width: 520)
+        .onAppear {
+            // Don't open with a focus ring on Copy Details; Tab still brings rings back.
+            DispatchQueue.main.async { NSApp.keyWindow?.makeFirstResponder(nil) }
+        }
     }
 
     private var details: String {
         var text = item.errorDetail ?? item.error ?? "No details were recorded."
-        if let url = item.url { text = "URL: \(url)\n\n" + text }
+        if let url = item.url, !text.contains(url) { text = "URL: \(url)\n\n" + text }
         return text
     }
 }
