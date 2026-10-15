@@ -142,9 +142,6 @@ struct DownloadRow: View {
             actions
         }
         .padding(.vertical, 4)
-        .contentShape(Rectangle())
-        .onTapGesture(count: 2) { model.open(item) }
-        .contextMenu { DownloadContextMenu(item: item) }
     }
 
     @ViewBuilder private var actions: some View {
@@ -223,11 +220,12 @@ struct DownloadContextMenu: View {
 
 struct GalleryCard: View {
     let item: DisplayItem
-    @Environment(AppModel.self) private var model
+    var contentMode: ContentMode = .fill
+    var isSelected = false
 
     var body: some View {
         VStack(alignment: .leading, spacing: 6) {
-            Thumbnail(item: item, cornerRadius: 10)
+            Thumbnail(item: item, cornerRadius: 10, contentMode: contentMode)
                 .aspectRatio(16 / 9, contentMode: .fit)
                 .overlay(alignment: .bottom) { progressOverlay }
                 .overlay(alignment: .topTrailing) { badge }
@@ -242,9 +240,10 @@ struct GalleryCard: View {
                     .lineLimit(1)
             }
         }
+        .padding(6)
+        .background(isSelected ? Color.accentColor.opacity(0.22) : .clear,
+                    in: RoundedRectangle(cornerRadius: 14, style: .continuous))
         .contentShape(Rectangle())
-        .onTapGesture(count: 2) { model.open(item) }
-        .contextMenu { DownloadContextMenu(item: item) }
     }
 
     @ViewBuilder private var badge: some View {

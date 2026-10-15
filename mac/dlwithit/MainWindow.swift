@@ -1,3 +1,4 @@
+import QuickLook
 import SwiftUI
 import AppKit
 
@@ -135,6 +136,8 @@ struct Sidebar: View {
 struct QueueList: View {
     let filter: SidebarFilter
     @Environment(AppModel.self) private var model
+    @State private var selection: Set<String> = []
+    @State private var preview: URL?
 
     var body: some View {
         let visible = model.listItems.filter(filter.matches)
@@ -148,15 +151,15 @@ struct QueueList: View {
                 Text("Right-click a video or image in your browser and choose dlwithit. Past downloads live in the Gallery.")
             }
         } else {
-            List {
+            List(selection: $selection) {
                 if !active.isEmpty {
                     Section("In Progress") {
-                        ForEach(active) { DownloadRow(item: $0) }
+                        ForEach(active) { DownloadRow(item: $0).tag($0.id) }
                     }
                 }
                 if !finished.isEmpty {
                     Section {
-                        ForEach(finished) { DownloadRow(item: $0) }
+                        ForEach(finished) { DownloadRow(item: $0).tag($0.id) }
                     } header: {
                         HStack {
                             Text("Finished")
@@ -171,6 +174,52 @@ struct QueueList: View {
             }
             .listStyle(.inset)
             .animation(.default, value: model.jobs.map(\.id))
+            // Right-click acts on the selection; double-click (or Return) opens.
+            .contextMenu(forSelectionType: String.self) { ids in
+                SelectionMenu(items: visible.filter { ids.contains($0.id) })
+            } primaryAction: { ids in
+                visible.filter { ids.contains($0.id) }.forEach(model.open)
+            }
+            .onKeyPress(.space) {
+                preview = preview == nil ? quickLookURL(visible) : nil
+                return .handled
+            }
+            .quickLookPreview($preview)
+        }
+    }
+
+    // The first selected item that has a file on disk.
+    private func quickLookURL(_ items: [DisplayItem]) -> URL? {
+        items.first { selection.contains($0.id) && $0.fileExists }
+            .flatMap { $0.filePath.map(URL.init(fileURLWithPath:)) }
+    }
+}
+
+/// Right-click menu for one or several selected downloads.
+struct SelectionMenu: View {
+    let items: [DisplayItem]
+    @Environment(AppModel.self) private var model
+
+    var body: some View {
+        if items.count == 1, let item = items.first {
+            DownloadContextMenu(item: item)
+        } else if !items.isEmpty {
+            let onDisk = items.filter(\.fileExists)
+            if !onDisk.isEmpty {
+                Button("Show \(onDisk.count) in Finder") { onDisk.forEach(model.revealInFinder) }
+            }
+            let active = items.filter(\.isActive)
+            if !active.isEmpty {
+                Button("Cancel \(active.count) Downloads") { active.forEach(model.cancel) }
+            }
+            let finished = items.filter { !$0.isActive }
+            if !finished.isEmpty {
+                Divider()
+                Button(finished.first?.origin == .library ? "Remove \(finished.count) from Library"
+                                                           : "Remove \(finished.count) from List") {
+                    finished.forEach(model.remove)
+                }
+            }
         }
     }
 }
@@ -178,6 +227,9 @@ struct QueueList: View {
 struct LibraryGallery: View {
     let filter: SidebarFilter
     @Environment(AppModel.self) private var model
+    @AppStorage(Prefs.galleryFit) private var fit = false
+    @State private var selection: String?
+    @State private var preview: URL?
 
     var body: some View {
         let visible = model.galleryItems.filter(filter.matches)
@@ -187,14 +239,56 @@ struct LibraryGallery: View {
                                        description: Text("Everything you download shows up here, even after you clear the list."))
             } else {
                 ScrollView {
-                    LazyVGrid(columns: [GridItem(.adaptive(minimum: 170, maximum: 260), spacing: 16)], spacing: 18) {
-                        ForEach(visible) { GalleryCard(item: $0) }
+                    HStack {
+                        Text(visible.count == 1 ? "1 download" : "\(visible.count) downloads")
+                            .font(.callout)
+                            .foregroundStyle(.secondary)
+                        Spacer()
+                        Picker("Thumbnails", selection: $fit) {
+                            Image(systemName: "rectangle.fill").help("Fill: crop each picture to its tile").tag(false)
+                            Image(systemName: "rectangle.center.inset.filled").help("Fit: show the whole picture").tag(true)
+                        }
+                        .pickerStyle(.segmented)
+                        .labelsHidden()
+                        .fixedSize()
                     }
-                    .padding(20)
+                    .padding(.horizontal, 20)
+                    .padding(.top, 12)
+
+                    LazyVGrid(columns: [GridItem(.adaptive(minimum: 170, maximum: 260), spacing: 8)], spacing: 8) {
+                        ForEach(visible) { item in
+                            GalleryCard(item: item, contentMode: fit ? .fit : .fill,
+                                        isSelected: selection == item.id)
+                                .onTapGesture(count: 2) {
+                                    selection = item.id
+                                    model.open(item)
+                                }
+                                .simultaneousGesture(TapGesture().onEnded { selection = item.id })
+                                .contextMenu { DownloadContextMenu(item: item) }
+                        }
+                    }
+                    .padding(.horizontal, 14)
+                    .padding(.bottom, 20)
                 }
+                .focusable()
+                .focusEffectDisabled()
+                .onKeyPress(.space) {
+                    preview = preview == nil ? selectedURL(visible) : nil
+                    return .handled
+                }
+                .onKeyPress(.return) {
+                    if let item = visible.first(where: { $0.id == selection }) { model.open(item) }
+                    return .handled
+                }
+                .quickLookPreview($preview)
             }
         }
         .onAppear { model.refreshLibrary() }
+    }
+
+    private func selectedURL(_ items: [DisplayItem]) -> URL? {
+        items.first { $0.id == selection && $0.fileExists }
+            .flatMap { $0.filePath.map(URL.init(fileURLWithPath:)) }
     }
 }
 

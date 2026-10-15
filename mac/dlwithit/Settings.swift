@@ -5,6 +5,7 @@ import SwiftUI
 // engine (see EngineSettings) so the extension and app always agree on them.
 enum Prefs {
     static let viewMode = "view_mode"
+    static let galleryFit = "gallery_fit"
     static let showMenuBar = "show_in_tray"
     static let showInDock = "show_in_dock"
     static let notify = "notify_when_done"
