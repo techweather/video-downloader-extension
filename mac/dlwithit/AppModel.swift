@@ -140,13 +140,25 @@ final class AppModel {
 
     // MARK: - Derived
 
-    var listItems: [DisplayItem] { jobs.map(DisplayItem.init(job:)) }
+    /// This session's downloads (the clearable list), newest first.
+    var recentItems: [DisplayItem] { jobs.map(DisplayItem.init(job:)) }
 
-    /// Gallery: everything still in progress, then the library.
-    var galleryItems: [DisplayItem] {
+    /// Everything: what's still in progress, then the library.
+    var libraryItems: [DisplayItem] {
         let active = jobs.filter { $0.state.isActive }.map(DisplayItem.init(job:))
         let activeIDs = Set(active.map(\.id))
         return active + library.filter { !activeIDs.contains($0.id) }.map(DisplayItem.init(entry:))
+    }
+
+    /// What a sidebar entry contains.
+    func items(in collection: Collection) -> [DisplayItem] {
+        switch collection {
+        case .recent: recentItems
+        case .library: libraryItems
+        case .downloading: libraryItems.filter(\.isActive)
+        case .attention: libraryItems.filter(\.isFailed)
+        case .source(let s): libraryItems.filter { $0.source == s }
+        }
     }
 
     var activeCount: Int { jobs.filter { $0.state.isActive && $0.state != .queued }.count }
@@ -169,7 +181,7 @@ final class AppModel {
     /// Every source seen in the list or library, most used first.
     var sources: [String] {
         var counts: [String: Int] = [:]
-        for item in galleryItems { counts[item.source, default: 0] += 1 }
+        for item in libraryItems { counts[item.source, default: 0] += 1 }
         return counts.sorted { $0.value == $1.value ? $0.key < $1.key : $0.value > $1.value }.map(\.key)
     }
 

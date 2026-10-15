@@ -6,7 +6,7 @@ struct MenuBarPanel: View {
     @Environment(\.openWindow) private var openWindow
 
     var body: some View {
-        let items = model.listItems
+        let items = model.recentItems
         let now = items.filter(\.isActive)
         let recent = Array(items.filter { !$0.isActive }.prefix(4))
 

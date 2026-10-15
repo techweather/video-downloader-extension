@@ -130,8 +130,15 @@ struct DisplayItem: Identifiable, Equatable {
     var error: String?
     var errorDetail: String?
     var canConvert: Bool
+    var date: Double            // when it finished, or when it was asked for if still going
 
     var isActive: Bool { state.isActive }
+    var sizeBytes: Int64? { fileExists ? filePath.flatMap(FileSizeCache.size) : nil }
+    /// "MP4", "PNG"… from the file name, for sorting by kind.
+    var kind: String {
+        let ext = ((filePath ?? url ?? "") as NSString).pathExtension.uppercased()
+        return ext.isEmpty ? (isImage ? "IMAGE" : "VIDEO") : ext
+    }
     var isFailed: Bool { state == .failed }
 
     init(job: Job) {
@@ -151,6 +158,7 @@ struct DisplayItem: Identifiable, Equatable {
         error = job.error
         errorDetail = job.errorDetail
         canConvert = job.canConvert && job.state == .done
+        date = job.finishedAt ?? job.createdAt
     }
 
     init(entry: LibraryEntry) {
@@ -170,6 +178,7 @@ struct DisplayItem: Identifiable, Equatable {
         error = entry.error
         errorDetail = nil
         canConvert = false
+        date = entry.finishedAt ?? 0
     }
 
     /// The line under the title.
@@ -186,7 +195,9 @@ struct DisplayItem: Identifiable, Equatable {
             var parts = [source]
             if let path = filePath {
                 if !fileExists { return "\(source) · File moved or deleted" }
-                if let size = Self.fileSize(path) { parts.append(size) }
+                if let bytes = sizeBytes {
+                    parts.append(ByteCountFormatter.string(fromByteCount: bytes, countStyle: .file))
+                }
                 let ext = (path as NSString).pathExtension.uppercased()
                 if !ext.isEmpty { parts.append(ext) }
             }
@@ -196,11 +207,21 @@ struct DisplayItem: Identifiable, Equatable {
         }
     }
 
-    private static func fileSize(_ path: String) -> String? {
+}
+
+/// File sizes, read from disk once per path; the list redraws several times a second.
+enum FileSizeCache {
+    nonisolated(unsafe) private static var sizes: [String: Int64] = [:]
+    private static let lock = NSLock()
+
+    static func size(_ path: String) -> Int64? {
+        lock.lock(); defer { lock.unlock() }
+        if let known = sizes[path] { return known }
         guard let bytes = (try? FileManager.default.attributesOfItem(atPath: path))?[.size] as? Int64 else {
             return nil
         }
-        return ByteCountFormatter.string(fromByteCount: bytes, countStyle: .file)
+        sizes[path] = bytes
+        return bytes
     }
 }
 
@@ -208,28 +229,58 @@ enum ViewMode: String {
     case list, gallery
 }
 
-enum SidebarFilter: Hashable {
-    case all, downloading, completed, attention
+/// What the window shows, picked in the sidebar. The List | Gallery switch only changes how.
+enum Collection: Hashable {
+    case recent                 // this session's downloads; Clear empties it
+    case library                // everything ever downloaded
+    case downloading, attention
     case source(String)
 
     var title: String {
         switch self {
-        case .all: "All"
+        case .recent: "Recent"
+        case .library: "Library"
         case .downloading: "Downloading"
-        case .completed: "Completed"
         case .attention: "Needs Attention"
         case .source(let s): s
         }
     }
+}
 
-    func matches(_ item: DisplayItem) -> Bool {
+enum SortKey: String, CaseIterable, Identifiable {
+    case date, name, size, source, kind
+    var id: String { rawValue }
+    var title: String {
         switch self {
-        case .all: true
-        case .downloading: item.isActive
-        case .completed: item.state == .done || item.state == .skipped
-        case .attention: item.state == .failed
-        case .source(let s): item.source == s
+        case .date: "Date Downloaded"
+        case .name: "Name"
+        case .size: "Size"
+        case .source: "Source"
+        case .kind: "Kind"
         }
+    }
+    /// Newest, biggest first feels natural; names and sources read A→Z.
+    var defaultAscending: Bool { self == .name || self == .source || self == .kind }
+}
+
+extension Array where Element == DisplayItem {
+    func sorted(by key: SortKey, ascending: Bool) -> [DisplayItem] {
+        sorted { ascending ? Self.precedes($0, $1, key) : Self.precedes($1, $0, key) }
+    }
+
+    // True when a comes before b in ascending order; ties fall back to newest first.
+    private static func precedes(_ a: DisplayItem, _ b: DisplayItem, _ key: SortKey) -> Bool {
+        let order: ComparisonResult
+        switch key {
+        case .date: order = a.date < b.date ? .orderedAscending : a.date > b.date ? .orderedDescending : .orderedSame
+        case .name: order = a.title.localizedStandardCompare(b.title)
+        case .size:
+            let x = a.sizeBytes ?? -1, y = b.sizeBytes ?? -1
+            order = x < y ? .orderedAscending : x > y ? .orderedDescending : .orderedSame
+        case .source: order = a.source.localizedStandardCompare(b.source)
+        case .kind: order = a.kind.localizedStandardCompare(b.kind)
+        }
+        return order == .orderedSame ? a.date > b.date : order == .orderedAscending
     }
 }
 

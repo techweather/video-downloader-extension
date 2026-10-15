@@ -6,6 +6,8 @@ import SwiftUI
 enum Prefs {
     static let viewMode = "view_mode"
     static let galleryFit = "gallery_fit"
+    static let sortKey = "sort_key"
+    static let sortAscending = "sort_ascending"
     static let showMenuBar = "show_in_tray"
     static let showInDock = "show_in_dock"
     static let notify = "notify_when_done"

@@ -27,7 +27,7 @@ struct DlwithitApp: App {
             }
             CommandGroup(after: .pasteboard) {
                 Divider()
-                Button("Clear Finished") { model.clearFinished() }
+                Button("Clear Recent") { model.clearFinished() }
                     .keyboardShortcut("k")
                     .disabled(!model.hasFinishedInList)
             }
