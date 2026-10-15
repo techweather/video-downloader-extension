@@ -341,56 +341,151 @@ struct ItemGallery: View {
     let items: [DisplayItem]
     @Environment(AppModel.self) private var model
     @AppStorage(Prefs.galleryFit) private var fit = false
-    @State private var selection: String?
+    @State private var selection: Set<String> = []
+    @State private var anchor: String?                  // where a ⇧-click range starts
     @State private var preview: URL?
+    @State private var cardFrames: [String: CGRect] = [:]
+    @State private var band: CGRect?                    // the drag-to-select rectangle
+    @State private var selectionBeforeBand: Set<String> = []
 
     var body: some View {
-        ScrollView {
-            HStack(spacing: 12) {
-                Text(items.count == 1 ? "1 item" : "\(items.count) items")
-                    .font(.callout)
-                    .foregroundStyle(.secondary)
-                Spacer()
-                if collection == .recent { ClearRecentButton() } else { RemoveMissingButton(items: items) }
-                Picker("Thumbnails", selection: $fit) {
-                    Image(systemName: "rectangle.fill").help("Fill: crop each picture to its tile").tag(false)
-                    Image(systemName: "rectangle.center.inset.filled").help("Fit: show the whole picture").tag(true)
+        GeometryReader { window in
+            ScrollView {
+                VStack(spacing: 0) {
+                    header
+                    grid
                 }
-                .pickerStyle(.segmented)
-                .labelsHidden()
-                .fixedSize()
-            }
-            .padding(.horizontal, 20)
-            .padding(.top, 12)
-
-            LazyVGrid(columns: [GridItem(.adaptive(minimum: 170, maximum: 260), spacing: 8)], spacing: 8) {
-                ForEach(items) { item in
-                    GalleryCard(item: item, contentMode: fit ? .fit : .fill,
-                                isSelected: selection == item.id)
-                        .onTapGesture(count: 2) {
-                            selection = item.id
-                            model.open(item)
-                        }
-                        .simultaneousGesture(TapGesture().onEnded { selection = item.id })
-                        .contextMenu { DownloadContextMenu(item: item) }
+                // Fill the window even when there are few cards, so empty space takes drags.
+                .frame(maxWidth: .infinity, minHeight: window.size.height, alignment: .top)
+                .coordinateSpace(.named(Self.space))
+                // Clicks and drags that start between cards land here (cards take their own).
+                .background {
+                    Color.clear
+                        .contentShape(Rectangle())
+                        .onTapGesture { selection = []; anchor = nil }
+                        .gesture(bandGesture)
+                }
+                .overlay(alignment: .topLeading) {
+                    if let band {
+                        Rectangle()
+                            .fill(Color.accentColor.opacity(0.12))
+                            .strokeBorder(Color.accentColor.opacity(0.6), lineWidth: 1)
+                            .frame(width: band.width, height: band.height)
+                            .offset(x: band.minX, y: band.minY)
+                            .allowsHitTesting(false)
+                    }
                 }
             }
-            .padding(.horizontal, 14)
-            .padding(.bottom, 20)
         }
         .focusable()
         .focusEffectDisabled()
         .onKeyPress(.space) {
-            preview = preview == nil ? quickLookURL(items, selected: selection.map { [$0] } ?? []) : nil
+            preview = preview == nil ? quickLookURL(items, selected: selection) : nil
             return .handled
         }
         .onKeyPress(.return) {
-            if let item = items.first(where: { $0.id == selection }) { model.open(item) }
+            selectedItems.forEach(model.open)
             return .handled
+        }
+        .onKeyPress(.escape) {
+            selection = []
+            return .handled
+        }
+        .onCommand(#selector(NSResponder.selectAll(_:))) {
+            selection = Set(items.map(\.id))
         }
         .quickLookPreview($preview)
         .onAppear { model.refreshLibrary() }
     }
+
+    private static let space = "gallery"
+
+    private var selectedItems: [DisplayItem] { items.filter { selection.contains($0.id) } }
+
+    private var header: some View {
+        HStack(spacing: 12) {
+            Text(items.count == 1 ? "1 item" : "\(items.count) items")
+                .font(.callout)
+                .foregroundStyle(.secondary)
+            Spacer()
+            if collection == .recent { ClearRecentButton() } else { RemoveMissingButton(items: items) }
+            Picker("Thumbnails", selection: $fit) {
+                Image(systemName: "rectangle.fill").help("Fill: crop each picture to its tile").tag(false)
+                Image(systemName: "rectangle.center.inset.filled").help("Fit: show the whole picture").tag(true)
+            }
+            .pickerStyle(.segmented)
+            .labelsHidden()
+            .fixedSize()
+        }
+        .padding(.horizontal, 20)
+        .padding(.top, 12)
+    }
+
+    private var grid: some View {
+        LazyVGrid(columns: [GridItem(.adaptive(minimum: 170, maximum: 260), spacing: 8)], spacing: 8) {
+            ForEach(items) { item in
+                GalleryCard(item: item, contentMode: fit ? .fit : .fill,
+                            isSelected: selection.contains(item.id))
+                    .onTapGesture(count: 2) {
+                        selection = [item.id]
+                        anchor = item.id
+                        model.open(item)
+                    }
+                    .simultaneousGesture(TapGesture().onEnded { click(item) })
+                    // Right-clicking a selected card acts on the whole selection, like Finder.
+                    .contextMenu {
+                        SelectionMenu(items: selection.contains(item.id) ? selectedItems : [item])
+                    }
+                    .onGeometryChange(for: CGRect.self) { $0.frame(in: .named(Self.space)) } action: {
+                        cardFrames[item.id] = $0
+                    }
+            }
+        }
+        .padding(.horizontal, 14)
+        .padding(.bottom, 20)
+    }
+
+    /// Finder clicks: plain selects one, ⌘ adds or removes, ⇧ selects the run from the last click.
+    private func click(_ item: DisplayItem) {
+        let flags = clickModifiers()
+        if flags.contains(.command) {
+            if selection.contains(item.id) { selection.remove(item.id) } else { selection.insert(item.id) }
+            anchor = item.id
+        } else if flags.contains(.shift), let anchor,
+                  let from = items.firstIndex(where: { $0.id == anchor }),
+                  let to = items.firstIndex(where: { $0.id == item.id }) {
+            selection.formUnion(items[min(from, to)...max(from, to)].map(\.id))
+        } else {
+            selection = [item.id]
+            anchor = item.id
+        }
+    }
+
+    /// Drag on empty space to draw a rectangle; every card it touches is selected.
+    /// Holding ⌘ or ⇧ adds to what was already selected.
+    private var bandGesture: some Gesture {
+        DragGesture(minimumDistance: 3, coordinateSpace: .named(Self.space))
+            .onChanged { drag in
+                if band == nil {
+                    let flags = clickModifiers()
+                    selectionBeforeBand = flags.contains(.command) || flags.contains(.shift) ? selection : []
+                }
+                let rect = CGRect(x: min(drag.startLocation.x, drag.location.x),
+                                  y: min(drag.startLocation.y, drag.location.y),
+                                  width: abs(drag.location.x - drag.startLocation.x),
+                                  height: abs(drag.location.y - drag.startLocation.y))
+                band = rect
+                let ids = Set(items.map(\.id))
+                let touched = cardFrames.filter { ids.contains($0.key) && $0.value.intersects(rect) }.keys
+                selection = selectionBeforeBand.union(touched)
+            }
+            .onEnded { _ in band = nil }
+    }
+}
+
+/// Modifier keys held for the click being handled, read from the event itself.
+func clickModifiers() -> NSEvent.ModifierFlags {
+    NSApp.currentEvent?.modifierFlags ?? NSEvent.modifierFlags
 }
 
 /// The first selected item that has a file on disk, for Quick Look.
