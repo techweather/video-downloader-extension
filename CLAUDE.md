@@ -124,7 +124,7 @@ Before this goes to a wider group of people, these must be true:
 
 ```bash
 cd /Users/seanstarkweather/01_Projects/dlwithit
-.venv/bin/pytest tests/test_api.py tests/test_classify.py tests/test_download_payload.py tests/test_encoder_logic.py tests/test_format_selection.py tests/test_sidecar_paths.py tests/test_events.py tests/test_routing.py tests/test_library.py tests/test_engine.py tests/test_app_api.py tests/test_error_summary.py -v
+.venv/bin/pytest tests/test_api.py tests/test_classify.py tests/test_download_payload.py tests/test_encoder_logic.py tests/test_format_selection.py tests/test_sidecar_paths.py tests/test_events.py tests/test_routing.py tests/test_library.py tests/test_engine.py tests/test_app_api.py tests/test_error_summary.py tests/test_pick_enrich.py -v
 ```
 
 Runs in ~2 seconds, no downloads, no browser, no app running needed.
@@ -143,6 +143,7 @@ Runs in ~2 seconds, no downloads, no browser, no app running needed.
 | `tests/test_engine.py` | Engine job lifecycle, picks, list actions, settings — workers driven by fake signals |
 | `tests/test_app_api.py` | `/app/` endpoints: token, no-CORS, actions, live event stream |
 | `tests/test_error_summary.py` | One-line error text shown on failed downloads |
+| `tests/test_pick_enrich.py` | Real titles/thumbnails for picker videos via oEmbed (faked, no network) |
 
 The whole fast suite (everything except `test_real_downloads.py`, ~380 tests, ~4 s): `.venv/bin/pytest -q -m "not slow" --ignore=tests/test_real_downloads.py`
 
