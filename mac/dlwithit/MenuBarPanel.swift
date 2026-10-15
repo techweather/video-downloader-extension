@@ -56,13 +56,13 @@ struct MenuBarPanel: View {
             }
 
             if !now.isEmpty {
-                header("Now")
+                header("In Progress")
                 ForEach(now) { PanelRow(item: $0) }
             }
 
             if !recent.isEmpty {
                 HStack {
-                    header("Recent")
+                    header("Finished")
                     Spacer()
                     Button("Clear") { model.clearFinished() }
                         .buttonStyle(.borderless)
