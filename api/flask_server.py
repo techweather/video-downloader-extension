@@ -17,6 +17,7 @@ When the Qt window runs the show (native_app.py) there is no engine and the
 
 import hmac
 import json
+import os
 import queue
 import threading
 
@@ -313,6 +314,20 @@ class FlaskServer:
         @app.route('/app/library/sources', methods=['GET'])
         def app_library_sources():
             return jsonify(self.engine.library.sources())
+
+        @app.route('/app/library/remove-missing', methods=['POST'])
+        def app_library_remove_missing():
+            return jsonify({"removed": self.engine.library.remove_missing()})
+
+        @app.route('/app/library/<entry_id>', methods=['PATCH'])
+        def app_library_update(entry_id):
+            # The app found the file somewhere new (it followed a move, or the user located it).
+            path = body().get('file_path')
+            if not isinstance(path, str) or not os.path.isabs(path) or not os.path.isfile(path):
+                return _error("file_path must be an existing file", 400)
+            if not self.engine.library.update_path(entry_id, path):
+                return _error("Not in the library", 404)
+            return jsonify(self.engine.library.get(entry_id))
 
         @app.route('/app/library/<entry_id>', methods=['DELETE'])
         def app_library_remove(entry_id):

@@ -208,3 +208,25 @@ class TestEvents:
 
     def test_stream_needs_token(self, client):
         assert client.get('/app/events').status_code == 401
+
+
+class TestLibraryFiles:
+    def test_locate_and_remove_missing(self, client, engine, tmp_path):
+        a = add_video(client).get_json()['job_id']
+        b = add_video(client, 'https://vimeo.com/2').get_json()['job_id']
+        engine.worker.download_complete.emit(a, str(tmp_path / 'moved-away.mp4'))
+        engine.worker.download_complete.emit(b, str(tmp_path / 'deleted.mp4'))
+        found = tmp_path / 'found-here.mp4'
+        found.write_bytes(b'x')
+        r = client.patch(f'/app/library/{a}', json={'file_path': str(found)}, headers=AUTH)
+        assert r.status_code == 200 and r.get_json()['file_path'] == str(found)
+        assert client.post('/app/library/remove-missing', headers=AUTH).get_json() == {'removed': [b]}
+
+    def test_locate_rejects_bad_paths(self, client, engine, tmp_path):
+        a = add_video(client).get_json()['job_id']
+        engine.worker.download_complete.emit(a, '/x/a.mp4')
+        assert client.patch(f'/app/library/{a}', json={'file_path': 'relative.mp4'}, headers=AUTH).status_code == 400
+        assert client.patch(f'/app/library/{a}', json={'file_path': str(tmp_path)}, headers=AUTH).status_code == 400
+        f = tmp_path / 'f.mp4'
+        f.write_bytes(b'x')
+        assert client.patch('/app/library/nope', json={'file_path': str(f)}, headers=AUTH).status_code == 404

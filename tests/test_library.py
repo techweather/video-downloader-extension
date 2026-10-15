@@ -96,3 +96,20 @@ class TestLibrary:
         for t in threads:
             t.join()
         assert len(lib.entries(limit=1000)) == 80
+
+
+class TestMovedFiles:
+    def test_update_path(self, lib, tmp_path):
+        lib.record(job('a', file_path='/old/place.mp4'))
+        assert lib.update_path('a', '/new/place.mp4') is True
+        assert lib.get('a')['file_path'] == '/new/place.mp4'
+        assert lib.update_path('nope', '/x') is False
+
+    def test_remove_missing_keeps_files_that_exist(self, lib, tmp_path):
+        real = tmp_path / 'here.mp4'
+        real.write_bytes(b'x')
+        lib.record(job('here', file_path=str(real)))
+        lib.record(job('gone', file_path=str(tmp_path / 'gone.mp4')))
+        lib.record(job('failed', state='failed'))          # no file ever: not "missing"
+        assert lib.remove_missing() == ['gone']
+        assert {e['id'] for e in lib.entries()} == {'here', 'failed'}

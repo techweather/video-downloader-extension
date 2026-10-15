@@ -95,6 +95,22 @@ class Library:
             cur = self._db.execute("DELETE FROM downloads WHERE id = ?", (entry_id,))
         return cur.rowcount > 0
 
+    def update_path(self, entry_id, file_path):
+        """Point an entry at its file's new location (after it was moved). Returns True if it existed."""
+        with self._lock, self._db:
+            cur = self._db.execute("UPDATE downloads SET file_path = ? WHERE id = ?", (file_path, entry_id))
+        return cur.rowcount > 0
+
+    def remove_missing(self):
+        """Forget every entry whose file is no longer on disk. Returns the ids removed."""
+        with self._lock:
+            rows = self._db.execute(
+                "SELECT id, file_path FROM downloads WHERE file_path IS NOT NULL").fetchall()
+        gone = [r['id'] for r in rows if not os.path.exists(r['file_path'])]
+        with self._lock, self._db:
+            self._db.executemany("DELETE FROM downloads WHERE id = ?", [(i,) for i in gone])
+        return gone
+
     def sources(self):
         """Every source name in the library, with how many downloads came from it."""
         with self._lock:
