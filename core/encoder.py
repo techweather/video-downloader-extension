@@ -11,22 +11,31 @@ from queue import Queue
 from typing import Optional, Callable, Dict, Any
 
 
+def bundled_binaries_dir() -> Optional[str]:
+    """Folder holding bundled ffmpeg/ffprobe/deno in a frozen build; None when running from source.
+
+    PyInstaller's sys._MEIPASS is Contents/Frameworks in the Qt .app and the
+    _internal folder of the headless engine build, so one lookup covers both.
+    """
+    if not getattr(sys, 'frozen', False):
+        return None
+    meipass = getattr(sys, '_MEIPASS', None)
+    if meipass:
+        return meipass
+    # Older layout guess: Contents/MacOS/<exe> -> Contents/Frameworks
+    return os.path.join(os.path.dirname(os.path.dirname(sys.executable)), 'Frameworks')
+
+
 def get_ffmpeg_bin() -> str:
-    """Return the absolute path to ffmpeg, whether running from source or a bundled .app."""
-    if getattr(sys, 'frozen', False):
-        # Bundled macOS .app: sys.executable is Contents/MacOS/<name>
-        # PyInstaller places ffmpeg in Contents/Frameworks/
-        contents_dir = os.path.dirname(os.path.dirname(sys.executable))
-        return os.path.join(contents_dir, 'Frameworks', 'ffmpeg')
-    return 'ffmpeg'
+    """Return the absolute path to ffmpeg, whether running from source or a bundled app."""
+    folder = bundled_binaries_dir()
+    return os.path.join(folder, 'ffmpeg') if folder else 'ffmpeg'
 
 
 def get_ffprobe_bin() -> str:
-    """Return the absolute path to ffprobe, whether running from source or a bundled .app."""
-    if getattr(sys, 'frozen', False):
-        contents_dir = os.path.dirname(os.path.dirname(sys.executable))
-        return os.path.join(contents_dir, 'Frameworks', 'ffprobe')
-    return 'ffprobe'
+    """Return the absolute path to ffprobe, whether running from source or a bundled app."""
+    folder = bundled_binaries_dir()
+    return os.path.join(folder, 'ffprobe') if folder else 'ffprobe'
 
 
 def get_ffmpeg_dir() -> Optional[str]:
@@ -34,12 +43,9 @@ def get_ffmpeg_dir() -> Optional[str]:
     Return the directory containing ffmpeg/ffprobe for yt-dlp's ffmpeg_location option.
     Returns None in dev (yt-dlp uses PATH), absolute dir path when bundled.
     """
-    if getattr(sys, 'frozen', False):
-        contents_dir = os.path.dirname(os.path.dirname(sys.executable))
-        return os.path.join(contents_dir, 'Frameworks')
-    return None
+    return bundled_binaries_dir()
 
-from PyQt5.QtCore import QThread, pyqtSignal
+from .events import Signal, WorkerThread
 
 from .metadata import embed_video_metadata
 
@@ -65,13 +71,14 @@ def detect_video_codec(filepath: str) -> Optional[str]:
 
 def file_needs_encoding(filepath: str) -> bool:
     """
-    Check whether a downloaded file needs VP9/VP8/AV1 → H.264 encoding.
+    Check whether a downloaded file needs VP9/VP8/AV1/Theora → H.264 encoding.
 
     Uses ffprobe on the actual file, so this is reliable regardless of which
-    format yt-dlp selected during download.
+    format yt-dlp selected during download. Theora (.ogg/.ogv, still served by
+    some sites as an HTML5 fallback) plays in neither QuickTime nor Premiere.
     """
     codec = detect_video_codec(filepath)
-    return codec in ('vp9', 'vp8', 'av1', 'vp09', 'vp08', 'av01')
+    return codec in ('vp9', 'vp8', 'av1', 'vp09', 'vp08', 'av01', 'theora')
 
 
 class VideoEncoder:
@@ -243,17 +250,17 @@ def encode_video_to_h264(
     return encoder.encode_to_h264(input_path, keep_original, progress_callback)
 
 
-class EncodingWorker(QThread):
+class EncodingWorker(WorkerThread):
     """
     Worker thread for encoding videos in parallel with downloads.
     Processes encoding jobs from a queue while downloads continue.
     """
     # Signals for UI updates
-    encoding_started = pyqtSignal(str)  # download_id
-    encoding_progress = pyqtSignal(str, int, str)  # download_id, percent, status
-    encoding_complete = pyqtSignal(str, str)  # download_id, final_path
-    encoding_error = pyqtSignal(str, str)  # download_id, error_message
-    encoding_cancelled = pyqtSignal(str)  # download_id
+    encoding_started = Signal(str)  # download_id
+    encoding_progress = Signal(str, int, str)  # download_id, percent, status
+    encoding_complete = Signal(str, str)  # download_id, final_path
+    encoding_error = Signal(str, str)  # download_id, error_message
+    encoding_cancelled = Signal(str)  # download_id
 
     def __init__(self):
         super().__init__()

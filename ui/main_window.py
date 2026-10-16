@@ -28,9 +28,12 @@ from core.app_updater import AppVersionCheckWorker, is_newer, notify_update_avai
 from core.macos import set_dock_visible, set_launch_at_login, refresh_dock_icon
 from core.url_router import classify_pasted_url
 from core.media_list import dedupe_videos
+from core.routing import route_picked_video
+from core.error_reporter import summarize_error
 from ui.components.download_item import DownloadItem
 from ui.components.video_selector import VideoSelectorDialog
 from ui.window_utils import bring_window_to_front, bring_dialog_to_front
+from ui.engine_bridge import on_main_thread
 
 
 class MainWindow(QMainWindow):
@@ -471,23 +474,23 @@ class MainWindow(QMainWindow):
         """Initialize the download worker thread and encoding worker"""
         # Initialize download worker
         self.worker = DownloadWorker(self.download_queue)
-        self.worker.progress_update.connect(self.update_progress)
-        self.worker.download_complete.connect(self.download_finished)
-        self.worker.download_error.connect(self.download_failed)
-        self.worker.download_cancelled.connect(self.download_cancelled)
-        self.worker.status_update.connect(self.update_status)
-        self.worker.playlist_detected.connect(self.handle_playlist_detected)
-        self.worker.download_skipped.connect(self.download_skipped_handler)
-        self.worker.encoding_needed.connect(self.queue_encoding_job)
+        self.worker.progress_update.connect(on_main_thread(self.update_progress))
+        self.worker.download_complete.connect(on_main_thread(self.download_finished))
+        self.worker.download_error.connect(on_main_thread(self.download_failed))
+        self.worker.download_cancelled.connect(on_main_thread(self.download_cancelled))
+        self.worker.status_update.connect(on_main_thread(self.update_status))
+        self.worker.playlist_detected.connect(on_main_thread(self.handle_playlist_detected))
+        self.worker.download_skipped.connect(on_main_thread(self.download_skipped_handler))
+        self.worker.encoding_needed.connect(on_main_thread(self.queue_encoding_job))
         self.worker.start()
 
         # Initialize encoding worker (runs in parallel with downloads)
         self.encoding_worker = EncodingWorker()
-        self.encoding_worker.encoding_started.connect(self.encoding_started_handler)
-        self.encoding_worker.encoding_progress.connect(self.encoding_progress_handler)
-        self.encoding_worker.encoding_complete.connect(self.encoding_complete_handler)
-        self.encoding_worker.encoding_error.connect(self.encoding_error_handler)
-        self.encoding_worker.encoding_cancelled.connect(self.encoding_cancelled_handler)
+        self.encoding_worker.encoding_started.connect(on_main_thread(self.encoding_started_handler))
+        self.encoding_worker.encoding_progress.connect(on_main_thread(self.encoding_progress_handler))
+        self.encoding_worker.encoding_complete.connect(on_main_thread(self.encoding_complete_handler))
+        self.encoding_worker.encoding_error.connect(on_main_thread(self.encoding_error_handler))
+        self.encoding_worker.encoding_cancelled.connect(on_main_thread(self.encoding_cancelled_handler))
         self.encoding_worker.start()
     
     def init_tray(self):
@@ -674,7 +677,7 @@ class MainWindow(QMainWindow):
     def _check_ytdlp_version(self):
         """Spawn a background thread to check for yt-dlp updates."""
         self._version_check_worker = VersionCheckWorker()
-        self._version_check_worker.finished.connect(self._on_version_check_done)
+        self._version_check_worker.finished.connect(on_main_thread(self._on_version_check_done))
         self._version_check_worker.start()
 
     def _on_version_check_done(self, latest):
@@ -712,8 +715,8 @@ class MainWindow(QMainWindow):
 
         self._install_worker = InstallUpdateWorker(self._ytdlp_latest_version)
         self._install_worker.status_update.connect(
-            lambda msg: self.ytdlp_status_label.setText(msg))
-        self._install_worker.finished.connect(self._on_install_finished)
+            on_main_thread(lambda msg: self.ytdlp_status_label.setText(msg)))
+        self._install_worker.finished.connect(on_main_thread(self._on_install_finished))
         self._install_worker.start()
 
     def _on_install_finished(self, success, message, new_version):
@@ -730,7 +733,7 @@ class MainWindow(QMainWindow):
     def _check_app_version(self):
         """Spawn a background thread to check for dlwithit app updates."""
         self._app_version_check_worker = AppVersionCheckWorker()
-        self._app_version_check_worker.finished.connect(self._on_app_version_check_done)
+        self._app_version_check_worker.finished.connect(on_main_thread(self._on_app_version_check_done))
         self._app_version_check_worker.start()
 
     def _on_app_version_check_done(self, latest, release_url):
@@ -906,67 +909,12 @@ class MainWindow(QMainWindow):
                     
                     # Process each selected video
                     for video_info in selected:
-                        url = video_info['url']
-                        video_type = video_info.get('type', 'direct')
-
-                        # Types from the extension that always mean direct file download.
-                        # Includes HTML MIME types (e.g. 'video/mp4' from <source type="...">)
-                        # and extension-defined type strings.
-                        DIRECT_TYPES = {
-                            'direct', 'srcset', 'data-attribute', 'script-json',
-                            'preload', 'mux', 'meta-tag',
-                            'video/mp4', 'video/webm', 'video/quicktime',
-                            'video/x-m4v', 'video/ogg', 'video/x-matroska',
-                        }
-
-                        # Check if this should use yt-dlp (HLS or platform URL)
-                        if (video_type == 'hls' or
-                            url.endswith('.m3u8') or
-                            'vimeo.com' in url or
-                            'youtube.com' in url or
-                            'youtu.be' in url or
-                            'instagram.com' in url or
-                            'tiktok.com' in url):
-                            # Platform video or HLS stream - use yt-dlp
-                            download_data = {
-                                'url': url,
-                                'title': video_info.get('original_title', video_info.get('title', 'Video')),
-                                'type': 'video',
-                                'pageUrl': data['pageUrl'],
-                                'source': data['source'],
-                                'thumbnail': video_info.get('thumbnail')
-                            }
-                            self.add_download(download_data)
+                        kind, download_data = route_picked_video(
+                            video_info, data['pageUrl'], data['source'], from_playlist=False)
+                        if kind == 'direct':
+                            self.add_direct_video_download(download_data)
                         else:
-                            # Determine if this is a direct file download.
-                            # Trust the extension's type field first; fall back to URL extension.
-                            is_direct_file = (
-                                video_type in DIRECT_TYPES or
-                                url.endswith(('.mp4', '.webm', '.mov', '.avi', '.mkv', '.m4v')) or
-                                any(ext in url.lower() for ext in ['.mp4?', '.webm?', '.mov?'])
-                            )
-
-                            if is_direct_file:
-                                # Direct file - use direct download
-                                download_data = {
-                                    'url': url,
-                                    'title': video_info.get('title', 'Video'),
-                                    'pageUrl': data['pageUrl'],
-                                    'source': data['source'],
-                                    'thumbnail': video_info.get('thumbnail')
-                                }
-                                self.add_direct_video_download(download_data)
-                            else:
-                                # Unknown format - use yt-dlp as last resort
-                                download_data = {
-                                    'url': url,
-                                    'title': video_info.get('title', 'Video'),
-                                    'type': 'video',
-                                    'pageUrl': data['pageUrl'],
-                                    'source': data['source'],
-                                    'thumbnail': video_info.get('thumbnail')
-                                }
-                                self.add_download(download_data)
+                            self.add_download(download_data)
                     
                     # Show batch notification
                     self.tray_icon.showMessage(
@@ -1019,66 +967,12 @@ class MainWindow(QMainWindow):
                     
                     # Process each selected video (same logic as handle_video_list)
                     for video_info in selected:
-                        url = video_info['url']
-                        video_type = video_info.get('type', 'direct')
-
-                        DIRECT_TYPES = {
-                            'direct', 'srcset', 'data-attribute', 'script-json',
-                            'preload', 'mux', 'meta-tag',
-                            'video/mp4', 'video/webm', 'video/quicktime',
-                            'video/x-m4v', 'video/ogg', 'video/x-matroska',
-                        }
-
-                        # Check if this should use yt-dlp (HLS or platform URL)
-                        if (video_type == 'hls' or
-                            url.endswith('.m3u8') or
-                            'vimeo.com' in url or
-                            'youtube.com' in url or
-                            'youtu.be' in url or
-                            'instagram.com' in url or
-                            'tiktok.com' in url):
-                            # Platform video or HLS stream - use yt-dlp
-                            download_data = {
-                                'url': url,
-                                'title': video_info.get('original_title', video_info.get('title', 'Video')),
-                                'type': 'video',
-                                'pageUrl': playlist_data['pageUrl'],
-                                'source': playlist_data['source'],
-                                'thumbnail': video_info.get('thumbnail'),
-                                'skip_playlist_detection': True,
-                                'playlist_index': video_info.get('playlist_index')
-                            }
-                            self.add_download(download_data)
+                        kind, download_data = route_picked_video(
+                            video_info, playlist_data['pageUrl'], playlist_data['source'], from_playlist=True)
+                        if kind == 'direct':
+                            self.add_direct_video_download(download_data)
                         else:
-                            is_direct_file = (
-                                video_type in DIRECT_TYPES or
-                                url.endswith(('.mp4', '.webm', '.mov', '.avi', '.mkv', '.m4v')) or
-                                any(ext in url.lower() for ext in ['.mp4?', '.webm?', '.mov?'])
-                            )
-
-                            if is_direct_file:
-                                # Direct file - use direct download
-                                download_data = {
-                                    'url': url,
-                                    'title': video_info.get('title', 'Video'),
-                                    'pageUrl': playlist_data['pageUrl'],
-                                    'source': playlist_data['source'],
-                                    'thumbnail': video_info.get('thumbnail')
-                                }
-                                self.add_direct_video_download(download_data)
-                            else:
-                                # Unknown format - use yt-dlp as last resort
-                                download_data = {
-                                    'url': url,
-                                    'title': video_info.get('title', 'Video'),
-                                    'type': 'video',
-                                    'pageUrl': playlist_data['pageUrl'],
-                                    'source': playlist_data['source'],
-                                    'thumbnail': video_info.get('thumbnail'),
-                                    'skip_playlist_detection': True,
-                                    'playlist_index': video_info.get('playlist_index')
-                                }
-                                self.add_download(download_data)
+                            self.add_download(download_data)
                     
                     # Show batch notification
                     self.tray_icon.showMessage(
@@ -1190,6 +1084,9 @@ class MainWindow(QMainWindow):
                 # Extract and load thumbnail URL
                 thumbnail_url = status.replace('thumbnail:', '')
                 widget.load_thumbnail(thumbnail_url)
+            elif status.startswith('title:'):
+                title = status[len('title:'):]
+                widget.title_label.setText(f"<b>{title[:50]}...</b>" if len(title) > 50 else f"<b>{title}</b>")
             elif status == 'downloading':
                 widget.set_downloading()
                 widget.status_label.setText("Downloading...")
@@ -1258,20 +1155,7 @@ class MainWindow(QMainWindow):
     
     def _extract_short_error(self, raw_error):
         """Extract a concise one-line error summary from yt-dlp/requests output."""
-        import re
-        clean = re.sub(r'\x1b\[[0-9;]*m', '', raw_error)  # strip ANSI codes
-        # yt-dlp errors always contain an 'ERROR: ...' line — extract just that
-        for line in clean.splitlines():
-            line = line.strip()
-            if line.startswith('ERROR:'):
-                msg = line[6:].strip()
-                msg = re.sub(r'^\[[^\]]+\]\s*', '', msg)   # strip [extractor] prefix
-                msg = re.sub(r'https?://\S+', 'URL', msg)  # shorten URLs
-                return msg[:55] + '\u2026' if len(msg) > 55 else msg
-        # Fallback: collapse whitespace, strip verbose exception prefixes
-        clean = ' '.join(clean.split())
-        clean = re.sub(r'(Exception Type|Error Message|Traceback)[^:]*:\s*', '', clean)
-        return clean[:55] + '\u2026' if len(clean) > 55 else clean
+        return summarize_error(raw_error)
 
     def download_failed(self, download_id, error):
         """Handle download failure"""

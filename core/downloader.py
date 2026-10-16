@@ -17,7 +17,7 @@ from urllib.parse import urlparse, unquote
 # the entire code path before get_executable_path() is ever called.
 os.environ.setdefault('YTDLP_NO_PLUGINS', '1')
 
-from PyQt5.QtCore import QThread, pyqtSignal
+from .events import Signal, WorkerThread
 import yt_dlp
 
 from .encoder import VideoEncoder, file_needs_encoding, get_ffmpeg_dir
@@ -68,6 +68,21 @@ def sidecar_outtmpl(media_dir, metadata_dir, base_filename):
         'link': meta,
         'subtitle': meta,
     }
+
+
+def direct_video_filename(title, url):
+    """(name, extension) for a directly downloaded video file.
+
+    The name comes from the title, made safe for the filesystem. Titles taken
+    from a file name ("clip.mp4") lose their extension so it isn't doubled.
+    """
+    ext = os.path.splitext(urlparse(url).path)[1] or '.mp4'
+    safe_title = re.sub(r'[<>:"/\\|?*]', '-', title or '').strip()
+    stem, title_ext = os.path.splitext(safe_title)
+    if title_ext.lower() in ('.mp4', '.webm', '.mov', '.m4v', '.mkv', '.avi', '.ogv', ext.lower()):
+        safe_title = stem
+    safe_title = safe_title.strip().rstrip('.')[:100] or 'video'
+    return safe_title, ext
 
 
 def build_format_string(quality, extractor_key=None):
@@ -141,16 +156,16 @@ class YtDlpLogger:
         self.skipped_filename = None
 
 
-class DownloadWorker(QThread):
-    progress_update = pyqtSignal(str, int, str)  # id, percent, status
-    download_complete = pyqtSignal(str, str)  # id, path
-    download_error = pyqtSignal(str, str)  # id, error
-    download_cancelled = pyqtSignal(str)  # id
-    status_update = pyqtSignal(str, str)  # id, status
-    playlist_detected = pyqtSignal(str, dict)  # download_id, playlist_data
-    download_skipped = pyqtSignal(str, str, str)  # download_id, reason, filepath
+class DownloadWorker(WorkerThread):
+    progress_update = Signal(str, int, str)  # id, percent, status
+    download_complete = Signal(str, str)  # id, path
+    download_error = Signal(str, str)  # id, error
+    download_cancelled = Signal(str)  # id
+    status_update = Signal(str, str)  # id, status
+    playlist_detected = Signal(str, dict)  # download_id, playlist_data
+    download_skipped = Signal(str, str, str)  # download_id, reason, filepath
     # Signal to request encoding in separate worker (download_id, filepath, keep_original, metadata_info)
-    encoding_needed = pyqtSignal(str, str, bool, dict)
+    encoding_needed = Signal(str, str, bool, dict)
     
     def __init__(self, download_queue):
         super().__init__()
@@ -800,12 +815,7 @@ class DownloadWorker(QThread):
                     video_dir.mkdir(parents=True, exist_ok=True)
                     
                     # Generate filename - sanitize title for filesystem safety
-                    parsed = urlparse(download['url'])
-                    ext = os.path.splitext(parsed.path)[1] or '.mp4'
-                    safe_title = re.sub(r'[<>:"/\\|?*]', '-', title).strip().rstrip('.')
-                    if not safe_title:
-                        safe_title = 'video'
-                    safe_title = safe_title[:100]
+                    safe_title, ext = direct_video_filename(title, download['url'])
                     filename = f"{safe_title}{ext}"
                     
                     filepath = video_dir / filename
@@ -919,7 +929,7 @@ class DownloadWorker(QThread):
                             # Create playlist data structure
                             playlist_data = {
                                 'videos': videos,
-                                'pageTitle': f"Multiple Videos ({len(videos)} found)",
+                                'pageTitle': download.get('title') or f"Multiple Videos ({len(videos)} found)",
                                 'pageUrl': download['url'],
                                 'source': urlparse(download['url']).hostname or 'unknown'
                             }
@@ -1161,6 +1171,9 @@ class DownloadWorker(QThread):
                         if thumbnail_url:
                             # Emit thumbnail URL to update the UI
                             self.status_update.emit(self.current_download_id, f'thumbnail:{thumbnail_url}')
+                        # Real title, so a pasted link's placeholder name gets replaced
+                        if info.get('title') and not ytdlp_title_is_useless:
+                            self.status_update.emit(self.current_download_id, f"title:{info['title']}")
                         
                     
                     # Download the video

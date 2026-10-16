@@ -369,3 +369,28 @@ def create_test_download_data(download_type, url=None, **kwargs):
     }
     base_data.update(kwargs)
     return base_data
+
+class TestDirectVideoFilename:
+    """direct_video_filename() — names for videos fetched straight from a URL."""
+
+    def test_title_that_is_a_filename_keeps_one_extension(self):
+        from core.downloader import direct_video_filename
+        assert direct_video_filename('sample-15s.mp4', 'https://x/lib/sample-15s.mp4') == ('sample-15s', '.mp4')
+
+    def test_extension_comes_from_the_url(self):
+        from core.downloader import direct_video_filename
+        assert direct_video_filename('Reel', 'https://x/a/reel.webm?sig=1') == ('Reel', '.webm')
+
+    def test_missing_url_extension_defaults_to_mp4(self):
+        from core.downloader import direct_video_filename
+        assert direct_video_filename('Clip', 'https://stream.mux.com/abc') == ('Clip', '.mp4')
+
+    def test_unsafe_characters_and_empty_titles(self):
+        from core.downloader import direct_video_filename
+        assert direct_video_filename('a/b:c?', 'https://x/v.mp4') == ('a-b-c-', '.mp4')
+        assert direct_video_filename('', 'https://x/v.mp4') == ('video', '.mp4')
+        assert direct_video_filename(None, 'https://x/v.mp4') == ('video', '.mp4')
+
+    def test_dotted_titles_that_are_not_extensions_survive(self):
+        from core.downloader import direct_video_filename
+        assert direct_video_filename('Version 2.1 final', 'https://x/v.mp4') == ('Version 2.1 final', '.mp4')

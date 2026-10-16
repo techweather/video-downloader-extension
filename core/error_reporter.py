@@ -27,6 +27,51 @@ def redact_paths(text: str) -> str:
     return text
 
 
+# Plain-English lines for the failures people hit most. Checked in order against
+# the raw error text (case-insensitive); the first match wins.
+FRIENDLY_ERRORS = (
+    ('cookies database', "Instagram needs your Firefox login, and dlwithit couldn't find it"),
+    ('empty media response', "Instagram sent nothing back — the post may be private or removed"),
+    ('No video formats found', "The site didn't offer a downloadable video"),
+    ('Unsupported URL', "No downloadable video found on this page"),
+    ('only works when logged-in', "This video needs you to be logged in"),
+    ('login required', "This video needs you to be logged in"),
+    ('Sign in to confirm', "YouTube wants a sign-in for this video"),
+    ('Private video', "This video is private"),
+    ('This video is unavailable', "This video is unavailable"),
+    ('Video unavailable', "This video is unavailable"),
+    ('not available in your country', "This video isn't available in your region"),
+    ('geo restrict', "This video isn't available in your region"),
+    ('HTTP Error 404', "Not found (404) — the link may have expired"),
+    ('HTTP Error 403', "The site refused the download (403)"),
+    ('HTTP Error 401', "The site refused the download (401)"),
+    ('HTTP Error 429', "The site is rate-limiting downloads — try again later"),
+    ('Read timed out', "The site stopped responding — try again"),
+    ('No space left on device', "Your disk is full"),
+)
+
+
+def summarize_error(raw_error: str, limit: int = 55) -> str:
+    """One-line summary of a yt-dlp/requests error, for a download row."""
+    lowered = (raw_error or '').lower()
+    for needle, friendly in FRIENDLY_ERRORS:
+        if needle.lower() in lowered:
+            return friendly
+    clean = strip_ansi(raw_error or '')
+    # yt-dlp errors always contain an 'ERROR: ...' line — extract just that
+    for line in clean.splitlines():
+        found = re.search(r'\bERROR:\s*(.*)', line)
+        if found:
+            msg = found.group(1).strip()
+            msg = re.sub(r'^\[[^\]]+\]\s*', '', msg)   # strip [extractor] prefix
+            msg = re.sub(r'https?://\S+', 'URL', msg)  # shorten URLs
+            return msg[:limit] + '\u2026' if len(msg) > limit else msg
+    # Fallback: collapse whitespace, strip verbose exception prefixes
+    clean = ' '.join(clean.split())
+    clean = re.sub(r'(Exception Type|Error Message|Traceback)[^:]*:\s*', '', clean)
+    return clean[:limit] + '\u2026' if len(clean) > limit else clean
+
+
 def clean_error_text(text: str) -> str:
     """Strip ANSI codes and redact user paths — the full text, not summarised."""
     return redact_paths(strip_ansi(text))

@@ -15,7 +15,7 @@ import subprocess
 import urllib.error
 import urllib.request
 
-from PyQt5.QtCore import QThread, pyqtSignal
+from .events import Signal, WorkerThread
 
 
 GITHUB_RELEASES_URL = (
@@ -69,7 +69,7 @@ def notify_update_available(latest):
         pass
 
 
-class AppVersionCheckWorker(QThread):
+class AppVersionCheckWorker(WorkerThread):
     """Background thread that asks GitHub for the latest dlwithit release.
 
     Emits (latest_version, release_url). Both empty strings when no releases
@@ -77,7 +77,7 @@ class AppVersionCheckWorker(QThread):
     missing required fields.
     """
 
-    finished = pyqtSignal(str, str)
+    finished = Signal(str, str)
 
     def run(self):
         try:

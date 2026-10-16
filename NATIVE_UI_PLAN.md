@@ -54,12 +54,31 @@ dlwithit splits into a **headless Python engine** and **native shells**:
 
 ## Phases
 
-1. **Lock the decision and set up.** This doc, CLAUDE.md priorities, Things items, Xcode install.
-2. **Pick a visual direction.** HTML mockups for Mac and Windows, light and dark. They cover layout and hierarchy (settings placement, download-row anatomy, toolbar contents), not pixel styling. Then a quick SwiftUI prototype of the winner, to see real glass on the machine.
-3. **Separate the engine** (`headless-engine` branch). `core/downloader.py`, `core/encoder.py`, `core/updater.py` and `core/app_updater.py` subclass `QThread` and emit `pyqtSignal`s. Replace those with plain threads + callbacks. Extend `api/flask_server.py` with the commands the UI needs (queue, cancel, convert, settings, pick-from-list) and a live event stream for progress. The Qt app keeps working on top of the same engine until the native app reaches parity. Pytest covers the API contract.
-4. **Build the Mac app** to match today's features: queue, thumbnails, progress, Convert to MP4, paste URL, video picker, menu bar, settings, updater links.
-5. **Package the Mac app.** The `.pkg` ships the Swift app with the engine signed inside it. Retire the Qt UI. Record the demo and store screenshots on the new UI.
+1. ~~**Lock the decision and set up.**~~ Done 2026-10-14.
+2. ~~**Pick a visual direction.**~~ Done 2026-10-14. Chosen: **A** (toolbar + list) with a **List | Gallery** switch from C, the **B** menu bar panel, settings in a **gear popover (S2)** backed by a **Settings window (S1, ⌘,)**. Clear lives in the "Finished" section header and Edit › Clear Finished (⌘K). Paste-a-link is a toolbar **+** and ⌘V, not a field. Canvas: https://claude.ai/artifact/1XuAFcXoTsQJwT3jNytMva
+3. ~~**Separate the engine**~~ Done 2026-10-14 (`headless-engine` branch). `core/events.py` replaces QThread/pyqtSignal; `core/engine.py` owns jobs, picks and settings; `core/library.py` keeps download history; `api/flask_server.py` serves `/app/…` plus a live event stream (contract: [ENGINE_API.md](ENGINE_API.md)); `engine_main.py` runs it headless. The Qt app still works unchanged on the same workers.
+4. **Build the Mac app** — feature parity reached 2026-10-14, pending Sean's hands-on test. Queue, Gallery/library, thumbnails (Quick Look of the real file), progress, Convert to MP4, paste link, video picker, error details + report, menu bar panel, settings, update check, open at login, Dock toggle, notifications, `dlwithit://` URL scheme.
+5. **Package the Mac app.** Started: `engine.spec` builds the engine (PyInstaller, no Qt) and Release builds embed it in `dlwithit.app/Contents/Resources/engine/`. Still to do: signing every nested binary + notarization (needs Apple enrollment), swap the `.pkg` from the Qt app to the Swift app, change the bundle id from `com.dlwithit.prototype` to `com.dlwithit.app`, retire the Qt UI, then record the demo and screenshots.
 6. **Build the Windows app** in WinUI 3 against the same engine, plus a Windows installer.
+
+## Running it (development)
+
+- **Debug build** (Xcode ⌘R, or `xcodebuild -project mac/dlwithit.xcodeproj -target dlwithit -configuration Debug SYMROOT=build build`): the app starts the repo's `.venv/bin/python3.12 engine_main.py` itself, so Python edits only need an app relaunch.
+- **Release build**: first `.venv/bin/pyinstaller --noconfirm engine.spec`, then build with `-configuration Release`. The app runs the bundled engine.
+- **Engine alone**: `DLWITHIT_TOKEN=devtoken .venv/bin/python3.12 engine_main.py`, then `curl -H 'X-Dlwithit-Token: devtoken' localhost:5555/app/state`.
+- Only one thing can own port 5555. If the old Qt dlwithit is running, the new app says so and waits for you to quit it. While the Qt app is installed in /Applications, the extension's `dlwithit://wake` link opens **it**, not the new app.
+- Engine output goes to `~/Library/Application Support/dlwithit/engine.log`; the library is `library.sqlite3` beside it.
+- File bookmarks for moved-file tracking live in `bookmarks.plist` beside it (keyed by download id).
+
+## Testing it as Claude (what works on this Mac)
+
+- **Clicks and keys** work through computer-use: background `app_*` tools for buttons, foreground `computer_batch` for keystrokes such as ⌘V and Space. Convert window coordinates as screen points × (1456 ÷ 3008) for the foreground frame.
+- **Menus never open from Claude's clicks**: right-click menus, the menu bar panel, `Menu` buttons such as Save to and Sort. Change `@AppStorage` settings with `defaults write com.dlwithit.prototype <key> …` to check what a menu would do, and leave the real click to Sean. The app's main menu bar works via `app_menu`.
+- **Screenshots**: the computer-use screenshot sometimes comes back black or misses windows. `screencapture -x` plus `sips` cropping is reliable.
+- **Every rebuild changes the app's ad-hoc signature**, so macOS may ask again for Downloads-folder access. That's Sean's to answer, and it blocks the window until he does. Signing will fix it.
+- **System log**: use `/usr/bin/log show …`. Bare `log` is a zsh builtin here.
+- **The extension itself** can't be triggered by Claude, because extension shortcuts and context menus live outside the page. To exercise the app side, POST the same payloads to `localhost:5555/download`, or run the extension's scan code in a page through Claude in Chrome's `javascript_tool`.
+- Only one app can own port 5555. Quit the old Qt dlwithit, or a dev `native_app.py`, before testing. A stray dev Qt process shows up as `Python … native_app.py`.
 
 ## Open questions
 

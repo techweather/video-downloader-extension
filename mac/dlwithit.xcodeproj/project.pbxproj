@@ -55,6 +55,7 @@
 				D1A000000000000000000007 /* Sources */,
 				D1A000000000000000000003 /* Frameworks */,
 				D1A000000000000000000008 /* Resources */,
+				D1A000000000000000000010 /* Embed Engine */,
 			);
 			buildRules = (
 			);
@@ -114,6 +115,28 @@
 		};
 /* End PBXResourcesBuildPhase section */
 
+/* Begin PBXShellScriptBuildPhase section */
+		D1A000000000000000000010 /* Embed Engine */ = {
+			isa = PBXShellScriptBuildPhase;
+			alwaysOutOfDate = 1;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			inputFileListPaths = (
+			);
+			inputPaths = (
+			);
+			name = "Embed Engine";
+			outputFileListPaths = (
+			);
+			outputPaths = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+			shellPath = /bin/sh;
+			shellScript = "# Release builds ship the PyInstaller engine (build it first: .venv/bin/pyinstaller engine.spec).\n# Debug builds run the repo's engine_main.py instead, so Python changes need no rebuild.\nSRC=\"${SRCROOT}/../dist/dlwithit-engine\"\nDEST=\"${TARGET_BUILD_DIR}/${UNLOCALIZED_RESOURCES_FOLDER_PATH}/engine\"\nif [ \"${CONFIGURATION}\" = \"Release\" ] || [ \"${DLWITHIT_EMBED_ENGINE:-0}\" = \"1\" ]; then\n  if [ ! -x \"$SRC/dlwithit-engine\" ]; then\n    echo \"error: No engine build at $SRC. Run: .venv/bin/pyinstaller --noconfirm engine.spec\"\n    exit 1\n  fi\n  mkdir -p \"$DEST\"\n  rsync -a --delete \"$SRC/\" \"$DEST/\"\nelse\n  rm -rf \"$DEST\"\nfi\n";
+		};
+/* End PBXShellScriptBuildPhase section */
+
 /* Begin PBXSourcesBuildPhase section */
 		D1A000000000000000000007 /* Sources */ = {
 			isa = PBXSourcesBuildPhase;
@@ -171,6 +194,8 @@
 				COMBINE_HIDPI_IMAGES = YES;
 				CURRENT_PROJECT_VERSION = 1;
 				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_FILE = Info.plist;
+				ENABLE_USER_SCRIPT_SANDBOXING = NO;
 				INFOPLIST_KEY_CFBundleDisplayName = dlwithit;
 				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.utilities";
 				INFOPLIST_KEY_NSHumanReadableCopyright = "© 2026 techweather";
@@ -195,6 +220,8 @@
 				COMBINE_HIDPI_IMAGES = YES;
 				CURRENT_PROJECT_VERSION = 1;
 				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_FILE = Info.plist;
+				ENABLE_USER_SCRIPT_SANDBOXING = NO;
 				INFOPLIST_KEY_CFBundleDisplayName = dlwithit;
 				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.utilities";
 				INFOPLIST_KEY_NSHumanReadableCopyright = "© 2026 techweather";

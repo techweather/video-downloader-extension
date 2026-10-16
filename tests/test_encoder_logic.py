@@ -79,6 +79,10 @@ class TestFileNeedsEncoding:
         with self._mock_codec('vp09'):
             assert file_needs_encoding('fake.webm') is True
 
+    def test_theora_needs_encoding(self):
+        with self._mock_codec('theora'):
+            assert file_needs_encoding('fake.ogg') is True
+
     def test_h264_no_encoding_needed(self):
         with self._mock_codec('h264'):
             assert file_needs_encoding('fake.mp4') is False

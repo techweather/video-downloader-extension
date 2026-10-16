@@ -101,6 +101,8 @@ Lumping these in before the signed/notarized build, since momentum is good. Each
 
 30. **Native UI rewrite — SwiftUI (Mac) + WinUI 3 (Windows)** — decided 2026-10-14, now the top priority. The Python code becomes a headless engine behind the local API; the PyQt5 window is replaced by native apps. Mac first, Windows as a close follow. Support floor: macOS 14 Sonoma, Windows 10 1809. **Authority: [NATIVE_UI_PLAN.md](NATIVE_UI_PLAN.md)** — the architecture, rejected alternatives (Qt 6, Tauri, Flutter), dev setup, and phases. Don't spend effort polishing the Qt UI; it stays only as the shipping version until the Mac app reaches parity. The demo video and store/README screenshots (#10, #25) wait for the new UI. Apple enrollment (#5) stays on hold until Sean is ready.
 
+    **Status end of 2026-10-14 (`headless-engine` branch, 21 commits, unmerged):** phases 1–4 done, phase 5 started — see NATIVE_UI_PLAN.md. The SwiftUI app (`mac/`) runs on the Python engine over the local API ([ENGINE_API.md](ENGINE_API.md)); Release builds bundle the engine. Sean hand-tested it on 2026-10-14 (extension in Chrome + Firefox, picker, gallery) and his feedback since then is done: thumbnails clipped to their frame, Fill/Fit gallery switch, selection + double-click + Space Quick Look, Recent/Library sidebar with List|Gallery as a pure view switch, Finder-style Sort menu, picker titles/thumbnails via oEmbed, plain-English Instagram errors, moved-file tracking (bookmarks) with Missing badge / Locate… / Remove Missing. **2026-10-15 UX pass (done, 13 commits):** gallery multi-select (⌘/⇧-click, drag, ⌘A, Esc; right-click selects the card first); one shared selection across list and gallery; content takes keyboard focus when a sidebar entry is picked; missing files tagged and faded the same in both views; Needs Attention includes missing files; Retry on a Library item re-downloads its link; View menu (as List ⌘1 / as Gallery ⌘2, Sort By, sidebar); Finder-style gallery highlight; Error Details shows the link once and Return doesn't send. Sean has delegated UX calls of this kind: pick what a normal Mac app does. **Next:** merge `headless-engine` → `main` with `--no-ff`, then Windows (phase 6). Still unverified by Sean: the menu bar panel, Sort menu by real click, Open at login across a real login.
+
 ---
 
 ## Things I care about for the "ready to share" bar
@@ -122,7 +124,7 @@ Before this goes to a wider group of people, these must be true:
 
 ```bash
 cd /Users/seanstarkweather/01_Projects/dlwithit
-.venv/bin/pytest tests/test_api.py tests/test_classify.py tests/test_download_payload.py tests/test_encoder_logic.py tests/test_format_selection.py tests/test_sidecar_paths.py -v
+.venv/bin/pytest tests/test_api.py tests/test_classify.py tests/test_download_payload.py tests/test_encoder_logic.py tests/test_format_selection.py tests/test_sidecar_paths.py tests/test_events.py tests/test_routing.py tests/test_library.py tests/test_engine.py tests/test_app_api.py tests/test_error_summary.py tests/test_pick_enrich.py -v
 ```
 
 Runs in ~2 seconds, no downloads, no browser, no app running needed.
@@ -135,6 +137,15 @@ Runs in ~2 seconds, no downloads, no browser, no app running needed.
 | `tests/test_encoder_logic.py` | Image magic-byte detection (JPEG/PNG/WebP/GIF); codec → encode decision (VP9/AV1/H264) |
 | `tests/test_format_selection.py` | yt-dlp format strings per quality; archive.org picks the web copy, not the master — runs yt-dlp's real selector offline |
 | `tests/test_sidecar_paths.py` | Sidecar metadata filenames — one extension each, all in `_metadata/` — via yt-dlp's real filename logic |
+| `tests/test_events.py` | Qt-free signals and worker threads (`core/events.py`) |
+| `tests/test_routing.py` | Which tool downloads each picked video; friendly source names |
+| `tests/test_library.py` | Download library (SQLite) behind the Gallery |
+| `tests/test_engine.py` | Engine job lifecycle, picks, list actions, settings — workers driven by fake signals |
+| `tests/test_app_api.py` | `/app/` endpoints: token, no-CORS, actions, live event stream |
+| `tests/test_error_summary.py` | One-line error text shown on failed downloads |
+| `tests/test_pick_enrich.py` | Real titles/thumbnails for picker videos via oEmbed (faked, no network) |
+
+The whole fast suite (everything except `test_real_downloads.py`, ~380 tests, ~4 s): `.venv/bin/pytest -q -m "not slow" --ignore=tests/test_real_downloads.py`
 
 ### Tier 2 — manual smoke test (not yet built)
 

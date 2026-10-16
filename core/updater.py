@@ -6,7 +6,7 @@ import sys
 import subprocess
 import json
 import urllib.request
-from PyQt5.QtCore import QThread, pyqtSignal
+from .events import Signal, WorkerThread
 
 
 def get_ytdlp_version():
@@ -23,10 +23,10 @@ def is_frozen():
     return getattr(sys, 'frozen', False)
 
 
-class VersionCheckWorker(QThread):
+class VersionCheckWorker(WorkerThread):
     """Background thread that checks GitHub for the latest yt-dlp version."""
     # latest_version (str or None if check failed)
-    finished = pyqtSignal(str)
+    finished = Signal(str)
 
     def run(self):
         try:
@@ -40,11 +40,11 @@ class VersionCheckWorker(QThread):
             self.finished.emit("")
 
 
-class InstallUpdateWorker(QThread):
+class InstallUpdateWorker(WorkerThread):
     """Background thread that installs a yt-dlp update via pip."""
-    status_update = pyqtSignal(str)
+    status_update = Signal(str)
     # success, message, new_version
-    finished = pyqtSignal(bool, str, str)
+    finished = Signal(bool, str, str)
 
     def __init__(self, target_version):
         super().__init__()
