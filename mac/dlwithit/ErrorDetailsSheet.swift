@@ -60,7 +60,7 @@ struct ErrorDetailsSheet: View {
                         if ok { dismiss() } else { sendFailed = true }
                     }
                 }
-                .keyboardShortcut(.defaultAction)
+                // No Return shortcut: sending shares data, so it takes a deliberate click.
                 .disabled(sending)
             }
         }
