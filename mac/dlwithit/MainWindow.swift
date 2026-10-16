@@ -180,17 +180,26 @@ struct CollectionContent: View {
     @Environment(AppModel.self) private var model
     @AppStorage(Prefs.sortKey) private var sortKey: SortKey = .date
     @AppStorage(Prefs.sortAscending) private var ascending = false
+    // Shared by list and gallery, so switching views keeps what's selected.
+    @State private var selection: Set<String> = []
+    @FocusState private var focused: Bool
 
     var body: some View {
         let items = model.items(in: collection).sorted(by: sortKey, ascending: ascending)
-        if items.isEmpty {
-            emptyState
-        } else {
-            switch mode {
-            case .list: ItemList(collection: collection, items: items)
-            case .gallery: ItemGallery(collection: collection, items: items)
+        Group {
+            if items.isEmpty {
+                emptyState
+            } else {
+                switch mode {
+                case .list: ItemList(collection: collection, items: items, selection: $selection, focus: $focused)
+                case .gallery: ItemGallery(collection: collection, items: items, selection: $selection, focus: $focused)
+                }
             }
         }
+        // Like Finder: picking a sidebar entry or a view puts the keyboard in the content,
+        // so ⌘A, Space and Return act on it straight away.
+        .onAppear { focused = true }
+        .onChange(of: mode) { focused = true }
     }
 
     @ViewBuilder private var emptyState: some View {
@@ -253,8 +262,9 @@ struct RemoveMissingButton: View {
 struct ItemList: View {
     let collection: Collection
     let items: [DisplayItem]
+    @Binding var selection: Set<String>
+    var focus: FocusState<Bool>.Binding
     @Environment(AppModel.self) private var model
-    @State private var selection: Set<String> = []
     @State private var preview: URL?
 
     var body: some View {
@@ -292,6 +302,7 @@ struct ItemList: View {
             }
         }
         .listStyle(.inset)
+        .focused(focus)
         .animation(.default, value: items.map(\.id))
         // Right-click acts on the selection; double-click (or Return) opens.
         .contextMenu(forSelectionType: String.self) { ids in
@@ -302,6 +313,9 @@ struct ItemList: View {
         .onKeyPress(.space) {
             preview = preview == nil ? quickLookURL(items, selected: selection) : nil
             return .handled
+        }
+        .onCommand(#selector(NSResponder.selectAll(_:))) {
+            selection = Set(items.map(\.id))
         }
         .quickLookPreview($preview)
     }
@@ -318,6 +332,7 @@ struct SelectionMenu: View {
         } else if !items.isEmpty {
             let onDisk = items.filter(\.fileExists)
             if !onDisk.isEmpty {
+                Button("Open \(onDisk.count) Items") { onDisk.forEach(model.open) }
                 Button("Show \(onDisk.count) in Finder") { onDisk.forEach(model.revealInFinder) }
             }
             let active = items.filter(\.isActive)
@@ -341,12 +356,15 @@ struct ItemGallery: View {
     let items: [DisplayItem]
     @Environment(AppModel.self) private var model
     @AppStorage(Prefs.galleryFit) private var fit = false
-    @State private var selection: Set<String> = []
+    @Binding var selection: Set<String>
+    var focus: FocusState<Bool>.Binding
     @State private var anchor: String?                  // where a ⇧-click range starts
     @State private var preview: URL?
     @State private var cardFrames: [String: CGRect] = [:]
     @State private var band: CGRect?                    // the drag-to-select rectangle
     @State private var selectionBeforeBand: Set<String> = []
+    @State private var hovered: String?                 // the card under the pointer
+    @State private var rightClickMonitor: Any?
 
     var body: some View {
         GeometryReader { window in
@@ -378,6 +396,7 @@ struct ItemGallery: View {
             }
         }
         .focusable()
+        .focused(focus)
         .focusEffectDisabled()
         .onKeyPress(.space) {
             preview = preview == nil ? quickLookURL(items, selected: selection) : nil
@@ -395,10 +414,32 @@ struct ItemGallery: View {
             selection = Set(items.map(\.id))
         }
         .quickLookPreview($preview)
-        .onAppear { model.refreshLibrary() }
+        .onAppear {
+            model.refreshLibrary()
+            watchRightClicks()
+        }
+        .onDisappear {
+            if let rightClickMonitor { NSEvent.removeMonitor(rightClickMonitor) }
+            rightClickMonitor = nil
+        }
     }
 
     private static let space = "gallery"
+
+    /// Finder: right-clicking a card that isn't selected selects it before the menu opens.
+    /// SwiftUI's context menu can't change the selection, so watch the click itself.
+    private func watchRightClicks() {
+        guard rightClickMonitor == nil else { return }
+        let hovered = $hovered, selection = $selection, anchor = $anchor
+        rightClickMonitor = NSEvent.addLocalMonitorForEvents(matching: [.rightMouseDown, .leftMouseDown]) { event in
+            let isRightClick = event.type == .rightMouseDown || event.modifierFlags.contains(.control)
+            if isRightClick, let id = hovered.wrappedValue, !selection.wrappedValue.contains(id) {
+                selection.wrappedValue = [id]
+                anchor.wrappedValue = id
+            }
+            return event
+        }
+    }
 
     private var selectedItems: [DisplayItem] { items.filter { selection.contains($0.id) } }
 
@@ -441,6 +482,9 @@ struct ItemGallery: View {
                     .onGeometryChange(for: CGRect.self) { $0.frame(in: .named(Self.space)) } action: {
                         cardFrames[item.id] = $0
                     }
+                    .onHover { inside in
+                        if inside { hovered = item.id } else if hovered == item.id { hovered = nil }
+                    }
             }
         }
         .padding(.horizontal, 14)
@@ -449,6 +493,7 @@ struct ItemGallery: View {
 
     /// Finder clicks: plain selects one, ⌘ adds or removes, ⇧ selects the run from the last click.
     private func click(_ item: DisplayItem) {
+        focus.wrappedValue = true
         let flags = clickModifiers()
         if flags.contains(.command) {
             if selection.contains(item.id) { selection.remove(item.id) } else { selection.insert(item.id) }
