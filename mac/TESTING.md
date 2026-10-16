@@ -25,6 +25,15 @@ Claude tested everything it could drive on 2026-10-14 (list at the bottom). What
   - [ ] Settings › Save to › Choose Folder… → pick a folder, then switch back.
 - [ ] *(Optional)* Open at login: turn it on, log out and in. The app should start in the menu bar with no window. Then turn it off again if you don't want it.
 
+## Added 2026-10-15 (Claude tested all of these in the Release build)
+
+Worth a minute of your own clicking when you have energy:
+
+- [ ] Gallery: ⌘-click, ⇧-click, drag a rectangle on empty space, ⌘A, Esc. Right-click a card that isn't selected → it gets selected.
+- [ ] Select some items, switch List ↔ Gallery (⌘1 / ⌘2): the selection stays.
+- [ ] Click a sidebar entry, press ⌘A straight away: everything in the content is selected.
+- [ ] Menu bar panel: section headers read "In Progress" and "Finished".
+
 ## Already verified by Claude
 
 Clicked through in the running app, the self-contained Release build with its bundled engine:
