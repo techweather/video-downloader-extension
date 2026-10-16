@@ -90,6 +90,11 @@
       thumb.src = thumbnail;
       thumb.alt = '';
       thumb.onerror = () => thumb.remove();
+      // Shaped like the picture, from square up to 16:9
+      thumb.onload = () => {
+        const aspect = thumb.naturalWidth / thumb.naturalHeight || 1;
+        thumb.style.width = Math.round(30 * Math.min(16 / 9, Math.max(1, aspect))) + 'px';
+      };
       toast.appendChild(thumb);
     } else {
       const icon = el('span', `toast-icon ${type}`);
@@ -398,6 +403,7 @@
 
       preview.onload = () => {
         size.textContent = `${preview.naturalWidth} × ${preview.naturalHeight}`;
+        hasTransparency(img.url).then(alpha => frame.classList.toggle('alpha', alpha));
       };
       preview.onerror = () => {
         // Placeholders that failed to load aren't worth offering
@@ -458,6 +464,34 @@
     panel.style.left = left + 'px';
     panel.style.top = top + 'px';
     highlight.classList.remove('visible');
+  }
+
+  // Whether an image has see-through pixels, so only those get a checkerboard.
+  // Reads a small copy's pixels; sites that block that get a guess from the file type.
+  function hasTransparency(url) {
+    return new Promise(resolve => {
+      const guess = () => resolve(/\.svg(\?|#|$)/i.test(url));
+      const probe = new Image();
+      probe.crossOrigin = 'anonymous';
+      probe.onerror = guess;
+      probe.onload = () => {
+        try {
+          const size = 32;
+          const canvas = document.createElement('canvas');
+          canvas.width = canvas.height = size;
+          const ctx = canvas.getContext('2d', { willReadFrequently: true });
+          ctx.drawImage(probe, 0, 0, size, size);
+          const data = ctx.getImageData(0, 0, size, size).data;
+          for (let i = 3; i < data.length; i += 4) {
+            if (data[i] < 250) return resolve(true);
+          }
+          resolve(false);
+        } catch {
+          guess();
+        }
+      };
+      probe.src = url;
+    });
   }
 
   // Last part of a URL's path, for a tile's caption.
@@ -588,7 +622,7 @@
         transform: translate(-50%, 8px); opacity: 0;
         transition: opacity .2s ease, transform .2s ease;
         display: flex; align-items: center; gap: 10px;
-        padding: 8px 16px 8px 8px; min-height: 40px;
+        padding: 6px 16px 6px 6px; min-height: 42px;
         background: rgba(30, 30, 32, 0.82);
         -webkit-backdrop-filter: blur(20px) saturate(180%);
         backdrop-filter: blur(20px) saturate(180%);
@@ -600,8 +634,8 @@
         white-space: nowrap;
       }
       .toast.visible { opacity: 1; transform: translate(-50%, 0); }
-      .toast-thumb { width: 28px; height: 28px; border-radius: 999px; object-fit: cover; flex: none; }
-      .toast-icon { width: 24px; height: 24px; padding: 3px; border-radius: 999px; flex: none; margin-left: 2px; }
+      .toast-thumb { width: 30px; height: 30px; border-radius: 8px; object-fit: cover; flex: none; }
+      .toast-icon { width: 24px; height: 24px; padding: 3px; border-radius: 999px; flex: none; margin: 0 2px 0 4px; }
       .toast-icon.success { background: #30d158; color: #fff; }
       .toast-icon.info { color: rgba(255, 255, 255, 0.8); }
 
@@ -641,16 +675,19 @@
       }
       .tile-frame {
         position: relative; aspect-ratio: 4 / 3; border-radius: 8px; overflow: hidden;
-        /* checkerboard, so transparent images still read */
         background-color: var(--fill);
+        outline: 0.5px solid var(--edge); outline-offset: -0.5px;
+        transition: box-shadow .12s ease;
+      }
+      /* Solid pictures fill the tile; see-through ones show whole, on a checkerboard */
+      .tile-frame img { width: 100%; height: 100%; object-fit: cover; display: block; }
+      .tile-frame.alpha img { object-fit: contain; }
+      .tile-frame.alpha {
         background-image:
           linear-gradient(45deg, rgba(128,128,128,.14) 25%, transparent 25%, transparent 75%, rgba(128,128,128,.14) 75%),
           linear-gradient(45deg, rgba(128,128,128,.14) 25%, transparent 25%, transparent 75%, rgba(128,128,128,.14) 75%);
         background-size: 12px 12px; background-position: 0 0, 6px 6px;
-        outline: 0.5px solid var(--edge); outline-offset: -0.5px;
-        transition: box-shadow .12s ease;
       }
-      .tile-frame img { width: 100%; height: 100%; object-fit: contain; display: block; }
       .tile:hover .tile-frame { box-shadow: 0 0 0 2.5px var(--accent); }
       .tile:focus-visible { outline: none; }
       .tile:focus-visible .tile-frame { box-shadow: 0 0 0 2.5px var(--accent); }
