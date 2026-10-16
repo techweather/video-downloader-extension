@@ -412,7 +412,12 @@
           tile.remove();
           updateFooter();
         } else {
+          // Still offered (the full image may load fine in the app), with a plain icon
           tile.classList.add('broken');
+          preview.remove();
+          const icon = el('span', 'broken-icon');
+          icon.innerHTML = ICONS.photo;
+          frame.prepend(icon);
         }
       };
 
@@ -450,6 +455,10 @@
     }
     updateFooter();
 
+    // Columns from the count, so the panel stays roughly square and rarely scrolls
+    const columns = columnsFor(images.length);
+    grid.style.gridTemplateColumns = `repeat(${columns}, 1fr)`;
+    panel.style.width = panelWidth(columns) + 'px';
     panel.append(header, grid, footer);
     root.appendChild(panel);
 
@@ -464,6 +473,19 @@
     panel.style.left = left + 'px';
     panel.style.top = top + 'px';
     highlight.classList.remove('visible');
+  }
+
+  // How many columns the panel's grid gets: 2 → 2, 3 → 3, 4 → 2×2, 5–9 → 3, more → 4,
+  // fewer if the window is too narrow.
+  function columnsFor(count) {
+    let columns = count <= 3 ? count : count === 4 ? 2 : count <= 9 ? 3 : 4;
+    while (columns > 1 && panelWidth(columns) > window.innerWidth - 24) columns--;
+    return Math.max(1, columns);
+  }
+
+  // Panel width for a column count: 150px tiles, 10px gaps, 14px side padding.
+  function panelWidth(columns) {
+    return columns * 150 + (columns - 1) * 10 + 28;
   }
 
   // Whether an image has see-through pixels, so only those get a checkerboard.
@@ -641,7 +663,7 @@
 
       /* Panel */
       .panel {
-        position: fixed; width: 344px; max-height: min(560px, calc(100vh - 24px));
+        position: fixed; max-height: calc(100vh - 24px);
         display: flex; flex-direction: column;
         background: var(--material);
         -webkit-backdrop-filter: blur(30px) saturate(180%);
@@ -666,7 +688,7 @@
       .icon-button:hover { background: var(--fill-hover); color: var(--fg); }
 
       .grid {
-        display: grid; grid-template-columns: 1fr 1fr; gap: 10px;
+        display: grid; gap: 10px;
         padding: 2px 14px 12px; overflow-y: auto;
       }
       .tile {
@@ -691,7 +713,9 @@
       .tile:hover .tile-frame { box-shadow: 0 0 0 2.5px var(--accent); }
       .tile:focus-visible { outline: none; }
       .tile:focus-visible .tile-frame { box-shadow: 0 0 0 2.5px var(--accent); }
-      .tile.broken .tile-frame img { opacity: .3; }
+      .broken-icon {
+        position: absolute; inset: 0; margin: auto; width: 28px; height: 28px; color: var(--secondary);
+      }
       .badge {
         position: absolute; top: 6px; right: 6px; width: 22px; height: 22px; padding: 3px;
         border-radius: 999px; background: var(--accent); color: #fff;
