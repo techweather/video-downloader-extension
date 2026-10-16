@@ -165,7 +165,7 @@ final class AppModel {
         case .recent: recentItems
         case .library: libraryItems
         case .downloading: libraryItems.filter(\.isActive)
-        case .attention: libraryItems.filter(\.isFailed)
+        case .attention: libraryItems.filter { $0.isFailed || $0.isMissing }
         case .source(let s): libraryItems.filter { $0.source == s }
         }
     }
