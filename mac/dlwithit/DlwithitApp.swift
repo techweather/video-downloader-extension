@@ -5,6 +5,7 @@ import UserNotifications
 struct DlwithitApp: App {
     @NSApplicationDelegateAdaptor(AppDelegate.self) private var appDelegate
     @AppStorage(Prefs.showMenuBar) private var showMenuBar = true
+    @AppStorage(Prefs.viewMode) private var mode: ViewMode = .list
 
     private var model: AppModel { appDelegate.model }
 
@@ -24,6 +25,17 @@ struct DlwithitApp: App {
                 Button("Download Link…") { model.showAddLink = true }
                     .keyboardShortcut("l")
                     .disabled(model.connection != .connected)
+            }
+            SidebarCommands()
+            // View menu, like Finder's: ⌘1 / ⌘2 for the two views, then sorting.
+            CommandGroup(before: .sidebar) {
+                Toggle("as List", isOn: Binding(get: { mode == .list }, set: { if $0 { mode = .list } }))
+                    .keyboardShortcut("1")
+                Toggle("as Gallery", isOn: Binding(get: { mode == .gallery }, set: { if $0 { mode = .gallery } }))
+                    .keyboardShortcut("2")
+                Divider()
+                Menu("Sort By") { SortOptions() }
+                Divider()
             }
             CommandGroup(after: .pasteboard) {
                 Divider()

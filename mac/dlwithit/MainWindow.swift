@@ -140,28 +140,37 @@ struct Sidebar: View {
 /// Finder-style sort menu: what to sort by, then which way.
 struct SortMenu: View {
     @AppStorage(Prefs.sortKey) private var key: SortKey = .date
-    @AppStorage(Prefs.sortAscending) private var ascending = false
 
     var body: some View {
         Menu {
-            Picker("Sort By", selection: Binding(
-                get: { key },
-                set: { new in
-                    if new != key { ascending = new.defaultAscending }
-                    key = new
-                })) {
-                ForEach(SortKey.allCases) { Text($0.title).tag($0) }
-            }
-            .pickerStyle(.inline)
-            Picker("Order", selection: $ascending) {
-                Text(orderLabels.ascending).tag(true)
-                Text(orderLabels.descending).tag(false)
-            }
-            .pickerStyle(.inline)
+            SortOptions()
         } label: {
             Label("Sort", systemImage: "arrow.up.arrow.down")
         }
         .help("Sorted by \(key.title.lowercased())")
+    }
+}
+
+/// What to sort by, then which way. In the toolbar's Sort menu and View › Sort By.
+struct SortOptions: View {
+    @AppStorage(Prefs.sortKey) private var key: SortKey = .date
+    @AppStorage(Prefs.sortAscending) private var ascending = false
+
+    var body: some View {
+        Picker("Sort By", selection: Binding(
+            get: { key },
+            set: { new in
+                if new != key { ascending = new.defaultAscending }
+                key = new
+            })) {
+            ForEach(SortKey.allCases) { Text($0.title).tag($0) }
+        }
+        .pickerStyle(.inline)
+        Picker("Order", selection: $ascending) {
+            Text(orderLabels.ascending).tag(true)
+            Text(orderLabels.descending).tag(false)
+        }
+        .pickerStyle(.inline)
     }
 
     private var orderLabels: (ascending: String, descending: String) {
