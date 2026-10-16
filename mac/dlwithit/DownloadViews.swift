@@ -237,16 +237,22 @@ struct GalleryCard: View {
                 .opacity(item.isDimmed ? 0.55 : 1)
 
             VStack(alignment: .leading, spacing: 1) {
+                // Selected: the name sits on an accent highlight, as in Finder's icon view.
                 Text(item.title)
                     .font(.callout.weight(.semibold))
                     .lineLimit(1)
+                    .padding(.horizontal, 4)
+                    .foregroundStyle(isSelected ? .white : .primary)
+                    .background(isSelected ? Color.accentColor : .clear,
+                                in: RoundedRectangle(cornerRadius: 4, style: .continuous))
+                    .padding(.horizontal, -4)
                 DetailLine(item: item)
                     .font(.caption)
                     .lineLimit(1)
             }
         }
         .padding(6)
-        .background(isSelected ? Color.accentColor.opacity(0.22) : .clear,
+        .background(isSelected ? Color.primary.opacity(0.12) : .clear,
                     in: RoundedRectangle(cornerRadius: 14, style: .continuous))
         .contentShape(Rectangle())
     }
