@@ -1,5 +1,7 @@
 // Service worker for Chrome Manifest V3
 
+importScripts('page-ui.js');  // dlwithitPageUI, DLWITHIT_TOASTS, dlwithitNoVideosToast
+
 // Context menus must be created in onInstalled in MV3 service workers
 chrome.runtime.onInstalled.addListener(() => {
   chrome.contextMenus.create({
@@ -437,33 +439,25 @@ function dedupeVideos(videos) {
 // or shortcut press launching a parallel scan and doubling the video list.
 const scanningTabs = new Set();
 
-// Show/update/remove the in-page "Scanning…" banner. The scan runs in the page,
-// so the feedback has to live there too — the app doesn't know a scan started.
-function setScanBanner(tabId, text) {
+// Show/update/remove the in-page "Scanning…" pill and toasts (see page-ui.js).
+// The scan runs in the page, so the feedback has to live there too — the app
+// doesn't know a scan started.
+function showPageUI(tabId, command) {
+  if (!tabId) return;
   chrome.scripting.executeScript({
     target: { tabId },
-    func: (bannerText) => {
-      const id = '__dlwithit_scan_banner';
-      let el = document.getElementById(id);
-      if (bannerText === null) { if (el) el.remove(); return; }
-      if (!el) {
-        el = document.createElement('div');
-        el.id = id;
-        el.style.cssText = 'position:fixed;bottom:20px;left:50%;transform:translateX(-50%);' +
-          'background:#2d2d2d;color:#e0e0e0;padding:12px 20px;border-radius:8px;' +
-          'font:13px -apple-system,BlinkMacSystemFont,sans-serif;z-index:2147483647;' +
-          'box-shadow:0 4px 16px rgba(0,0,0,0.4);border:1px solid #404040;pointer-events:none;';
-        document.body.appendChild(el);
-      }
-      el.textContent = bannerText;
-    },
-    args: [text]
-  }).catch(() => {});  // Banner is cosmetic — never let it break the scan.
+    func: dlwithitPageUI,
+    args: [command]
+  }).catch(() => {});  // Cosmetic — never let it break the scan.
+}
+
+function setScanBanner(tabId, text) {
+  showPageUI(tabId, { banner: text });
 }
 
 async function triggerCombinedVideoDownload(tab) {
   if (scanningTabs.has(tab.id)) {
-    setScanBanner(tab.id, 'Still scanning this page…');
+    showPageUI(tab.id, { toast: DLWITHIT_TOASTS.stillScanning });
     return;
   }
   scanningTabs.add(tab.id);
@@ -530,10 +524,7 @@ async function runCombinedVideoDownload(tab) {
       tab.id
     );
   } catch {
-    chrome.scripting.executeScript({
-      target: { tabId: tab.id },
-      func: () => alert('Could not connect to dlwithit. Please open the app and try again.')
-    }).catch(() => {});
+    showPageUI(tab.id, { toast: DLWITHIT_TOASTS.cantConnect });
     return;
   }
 
@@ -562,26 +553,9 @@ async function runCombinedVideoDownload(tab) {
     const scan = (scanResults && scanResults[0] && scanResults[0].result) || { videos: [], blobVideoCount: 0 };
     scan.videos = dedupeVideos(scan.videos);
     if (scan.videos.length === 0) {
-      let msg = 'No downloadable videos found on this page.';
-      if (scan.blobVideoCount > 0) {
-        msg += '\n\nDetected ' + scan.blobVideoCount + ' video player(s) using blob: URLs (streaming). Try navigating to a specific video page first, then use Video Download.';
-      } else {
-        msg += '\nThe page may use a different video delivery method or videos may not be loaded yet.';
-      }
-      // Drop the banner and let the browser paint one frame before alerting.
-      // Removing it and calling alert() in the same tick leaves the banner on
-      // screen: the element is gone from the DOM, but the modal blocks the
-      // repaint that would erase it. Done inside this one injection so it can't
-      // race with the finally-block cleanup.
-      chrome.scripting.executeScript({
-        target: { tabId: tab.id },
-        func: (message) => {
-          const banner = document.getElementById('__dlwithit_scan_banner');
-          if (banner) banner.remove();
-          setTimeout(() => alert(message), 60);
-        },
-        args: [msg]
-      }).catch(() => {});
+      // Drop the banner before the message, in one injection so it can't race
+      // with the finally-block cleanup.
+      showPageUI(tab.id, { banner: null, toast: dlwithitNoVideosToast(scan.blobVideoCount) });
     } else {
       sendToNativeApp({
         type: 'video-list',
@@ -624,7 +598,7 @@ chrome.runtime.onMessage.addListener((message, sender) => {
       thumbnail: message.thumbnail || message.url,
       pageUrl: sender.tab.url,
       source: new URL(sender.tab.url).hostname
-    });
+    }, sender.tab.id);
   }
 });
 
@@ -641,28 +615,12 @@ async function withAutoLaunch(fn, tabId) {
     } catch {}
 
     // Show a toast in the page while waiting
-    if (tabId) {
-      chrome.scripting.executeScript({
-        target: { tabId },
-        func: () => {
-          const d = document.createElement('div');
-          d.id = '__dlwithit_toast';
-          d.style.cssText = 'position:fixed;bottom:24px;right:24px;z-index:2147483647;background:#1c1c2e;color:#e8e8f0;padding:12px 18px;border-radius:8px;font:14px/1.4 -apple-system,sans-serif;box-shadow:0 4px 16px rgba(0,0,0,.4)';
-          d.textContent = 'Launching dlwithit\u2026';
-          document.body.appendChild(d);
-        }
-      }).catch(() => {});
-    }
+    showPageUI(tabId, { toast: DLWITHIT_TOASTS.launching });
 
     await new Promise(r => setTimeout(r, 4000));
 
     // Remove toast
-    if (tabId) {
-      chrome.scripting.executeScript({
-        target: { tabId },
-        func: () => { const d = document.getElementById('__dlwithit_toast'); if (d) d.remove(); }
-      }).catch(() => {});
-    }
+    showPageUI(tabId, { toast: null });
 
     return await fn();
   }
@@ -678,11 +636,6 @@ async function sendToNativeApp(data, tabId) {
   try {
     return await withAutoLaunch(post, tabId);
   } catch {
-    if (tabId) {
-      chrome.scripting.executeScript({
-        target: { tabId },
-        func: () => alert('Could not connect to dlwithit. Please open the app and try again.')
-      }).catch(() => {});
-    }
+    showPageUI(tabId, { toast: DLWITHIT_TOASTS.cantConnect });
   }
 }

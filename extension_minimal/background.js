@@ -270,37 +270,23 @@ function dedupeVideos(videos) {
 // or shortcut press launching a parallel scan and doubling the video list.
 const scanningTabs = new Set();
 
-// Show/update/remove the in-page "Scanning…" banner. The scan runs in the page,
-// so the feedback has to live there too — the app doesn't know a scan started.
-function setScanBanner(tabId, text) {
+// Show/update/remove the in-page "Scanning…" pill and toasts (see page-ui.js).
+// The scan runs in the page, so the feedback has to live there too — the app
+// doesn't know a scan started.
+function showPageUI(tabId, command) {
+  if (!tabId) return;
   browser.tabs.executeScript(tabId, {
-    code: `
-      (function() {
-        var id = '__dlwithit_scan_banner';
-        var el = document.getElementById(id);
-        var text = ${JSON.stringify(text)};
-        if (text === null) { if (el) el.remove(); return; }
-        if (!el) {
-          el = document.createElement('div');
-          el.id = id;
-          el.style.cssText = 'position:fixed;bottom:20px;left:50%;transform:translateX(-50%);' +
-            'background:#2d2d2d;color:#e0e0e0;padding:12px 20px;border-radius:8px;' +
-            'font:13px -apple-system,BlinkMacSystemFont,sans-serif;z-index:2147483647;' +
-            'box-shadow:0 4px 16px rgba(0,0,0,0.4);border:1px solid #404040;pointer-events:none;';
-          document.body.appendChild(el);
-        }
-        el.textContent = text;
-      })();
-    `
-  }, function() {
-    // Banner is cosmetic — a page that blocks injection shouldn't break the scan.
-    if (browser.runtime.lastError) return;
-  });
+    code: `(${dlwithitPageUI.toString()})(${JSON.stringify(command)});`
+  }).catch(() => {});  // Cosmetic — a page that blocks injection shouldn't break the scan.
+}
+
+function setScanBanner(tabId, text) {
+  showPageUI(tabId, { banner: text });
 }
 
 function triggerCombinedVideoDownload(tab) {
   if (scanningTabs.has(tab.id)) {
-    setScanBanner(tab.id, 'Still scanning this page…');
+    showPageUI(tab.id, { toast: DLWITHIT_TOASTS.stillScanning });
     return;
   }
   scanningTabs.add(tab.id);
@@ -380,7 +366,7 @@ function triggerCombinedVideoDownload(tab) {
           embedCount: videoEmbeds.length,
           embedPlatforms: videoEmbeds.map(v => v.platform),
           detectedVideos: detectedVideos
-        });
+        }, tab.id);
       } else {
         // Single embed — send page URL to yt-dlp as triggerVideoDownload does
         sendToNativeApp({
@@ -390,7 +376,7 @@ function triggerCombinedVideoDownload(tab) {
           thumbnail: pageData.thumbnail,
           pageUrl: pageUrl,
           source: pageData.source || new URL(pageUrl).hostname
-        });
+        }, tab.id);
       }
     } else {
       // No platform embeds — classify the URL
@@ -410,12 +396,14 @@ function triggerCombinedVideoDownload(tab) {
             thumbnail: pageData.thumbnail,
             pageUrl: pageUrl,
             source: pageData.source || new URL(pageUrl).hostname
-          });
+          }, tab.id);
         } else {
           setScanBanner(tab.id, 'Scanning page for videos…');
           browser.tabs.executeScript(tab.id, {
             code: `
               (function() {
+                ${dlwithitPageUI.toString()}
+                ${dlwithitNoVideosToast.toString()}
 
                 function sendVideosToBackground(videos, pageTitle, pageUrl) {
                   browser.runtime.sendMessage({
@@ -699,25 +687,14 @@ function triggerCombinedVideoDownload(tab) {
                   });
 
                   if (videos.length === 0) {
-                    let msg = 'No downloadable videos found on this page.';
-                    if (blobVideoCount > 0) {
-                      msg += '\\n\\nDetected ' + blobVideoCount + ' video player(s) using blob: URLs (streaming). This page appears to be a feed or playlist. Try navigating to a specific video page first, then use Video Download.';
-                    } else {
-                      msg += '\\nThe page may use a different video delivery method or videos may not be loaded yet.';
-                    }
-                    // Drop the scanning banner and let the browser paint one frame
-                    // before alerting. Removing it and calling alert() in the same
-                    // tick leaves the banner on screen: the element is gone from the
-                    // DOM, but the modal blocks the repaint that would erase it.
-                    var banner = document.getElementById('__dlwithit_scan_banner');
-                    if (banner) banner.remove();
-                    setTimeout(function() { alert(msg); }, 60);
+                    // Drop the scanning banner before showing the message.
+                    dlwithitPageUI({ banner: null, toast: dlwithitNoVideosToast(blobVideoCount) });
                   } else {
                     sendVideosToBackground(videos, document.title, window.location.href);
                   }
                 } catch (error) {
                   console.error('Error scanning for videos:', error);
-                  alert('Error scanning for videos: ' + error.message);
+                  dlwithitPageUI({ banner: null, toast: { title: 'Couldn’t scan this page for videos', body: error.message, type: 'warning' } });
                 }
               })();
             `
@@ -734,7 +711,7 @@ function triggerCombinedVideoDownload(tab) {
         scanningTabs.delete(tab.id);
         setScanBanner(tab.id, null);
         await tryLaunchApp();
-        alert('Launching dlwithit app. Please try the download again in a few seconds.');
+        showPageUI(tab.id, { toast: DLWITHIT_TOASTS.launchedTryAgain });
       });
     }
   });
@@ -784,7 +761,7 @@ browser.runtime.onMessage.addListener((message, sender) => {
       thumbnail: message.thumbnail || message.url,
       pageUrl: sender.tab.url,
       source: new URL(sender.tab.url).hostname
-    });
+    }, sender.tab.id);
   }
   else if (message.action === "videos-found") {
 
@@ -796,7 +773,7 @@ browser.runtime.onMessage.addListener((message, sender) => {
       pageTitle: message.pageTitle,
       pageUrl: message.pageUrl,
       source: new URL(message.pageUrl).hostname
-    });
+    }, sender.tab.id);
   }
 });
 
@@ -808,8 +785,9 @@ async function tryLaunchApp() {
   } catch {}
 }
 
-// Send data to native app
-async function sendToNativeApp(data) {
+// Send data to native app. tabId, when given, is where the "couldn't connect"
+// message shows — alert() doesn't work from a background page.
+async function sendToNativeApp(data, tabId) {
   const post = () => fetch('http://127.0.0.1:5555/download', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
@@ -820,11 +798,13 @@ async function sendToNativeApp(data) {
     await post();
   } catch {
     await tryLaunchApp();
+    showPageUI(tabId, { toast: DLWITHIT_TOASTS.launching });
     await new Promise(r => setTimeout(r, 4000));
+    showPageUI(tabId, { toast: null });
     try {
       await post();
     } catch {
-      alert('Could not connect to dlwithit. Please open the app and try again.');
+      showPageUI(tabId, { toast: DLWITHIT_TOASTS.cantConnect });
     }
   }
 }

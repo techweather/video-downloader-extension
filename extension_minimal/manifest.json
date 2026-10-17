@@ -10,7 +10,7 @@
     "<all_urls>"
   ],
   "background": {
-    "scripts": ["background.js"],
+    "scripts": ["page-ui.js", "background.js"],
     "persistent": false
   },
   "icons": {
