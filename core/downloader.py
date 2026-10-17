@@ -24,6 +24,7 @@ from . import apple_media
 from .media_check import BadDownload, check_download, is_web_page_type
 from .encoder import VideoEncoder, file_needs_encoding, get_ffmpeg_dir
 from .metadata import embed_image_metadata, embed_video_metadata
+from .pick_enrich import oembed_endpoint
 
 
 def _detect_image_extension(filepath):
@@ -104,6 +105,30 @@ def build_format_string(quality, extractor_key=None):
     else:
         # Specific resolution (numeric)
         return f'bestvideo[height<={quality}]+(bestaudio[language!$=-desc]/bestaudio)/best[height<={quality}]'
+
+
+def is_flat_playlist(info):
+    """True if `info` is a playlist whose entries yt-dlp only listed, without reading them."""
+    return (info.get('_type') == 'playlist' and
+            any(e and e.get('_type') in ('url', 'url_transparent') for e in info.get('entries') or []))
+
+
+def flat_entries_usable(info):
+    """True if a quick flat list can go straight to the picker.
+
+    A flat entry has a link but usually no title or thumbnail. That's fine when
+    the engine can fill both in afterwards (Vimeo/YouTube answer oEmbed), so the
+    picker opens at once. Anything else is read fully first, as before, so the
+    picker never shows a row of "Video 3"s it can't improve.
+    """
+    entries = [e for e in info.get('entries') or [] if e]
+    if len(entries) < 2:
+        return False
+    for entry in entries:
+        url = entry.get('url') or entry.get('webpage_url')
+        if not url or not (entry.get('title') or oembed_endpoint(url)):
+            return False
+    return True
 
 
 # yt-dlp logs one of these per entry while it walks a playlist, whatever the
@@ -680,6 +705,23 @@ class DownloadWorker(WorkerThread):
         
         return True
 
+    def _probe(self, url, logger, flat=True):
+        """yt-dlp's metadata for `url`, without downloading.
+
+        With `flat`, a page of embedded players is first only listed (0.7 s
+        for a dozen Vimeo embeds, against 3-9 s to read every one). If that
+        list can go straight to the picker it's returned as is; otherwise the
+        page is read fully, so everything after the probe sees what it always did.
+        """
+        if flat:
+            with yt_dlp.YoutubeDL({'quiet': True, 'logger': logger,
+                                   'extract_flat': 'in_playlist'}) as ydl:
+                info = ydl.extract_info(url, download=False)
+            if not is_flat_playlist(info) or flat_entries_usable(info):
+                return info
+        with yt_dlp.YoutubeDL({'quiet': True, 'logger': logger}) as ydl:
+            return ydl.extract_info(url, download=False)
+
     def _emit_playlist_if_multi(self, download, info):
         """Show the video picker if `info` turned out to hold several videos.
 
@@ -1046,8 +1088,8 @@ class DownloadWorker(WorkerThread):
 
                     probe_logger = YtDlpLogger(progress_callback=_report_probe)
                     try:
-                        with yt_dlp.YoutubeDL({'quiet': True, 'logger': probe_logger}) as ydl:
-                            info = ydl.extract_info(download['url'], download=False)
+                        info = self._probe(download['url'], probe_logger,
+                                           flat=not download.get('skip_playlist_detection'))
                     except (yt_dlp.DownloadError, yt_dlp.utils.ExtractorError) as extract_error:
                         # Check if this is a Vimeo embed error that we can retry
                         error_str = str(extract_error)
