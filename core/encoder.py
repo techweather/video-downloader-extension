@@ -76,9 +76,143 @@ def file_needs_encoding(filepath: str) -> bool:
     Uses ffprobe on the actual file, so this is reliable regardless of which
     format yt-dlp selected during download. Theora (.ogg/.ogv, still served by
     some sites as an HTML5 fallback) plays in neither QuickTime nor Premiere.
+
+    Never for a video with a see-through background: H.264 MP4 has no alpha,
+    so converting would flatten it. The original is kept as it is.
     """
     codec = detect_video_codec(filepath)
-    return codec in ('vp9', 'vp8', 'av1', 'vp09', 'vp08', 'av01', 'theora')
+    if codec not in ('vp9', 'vp8', 'av1', 'vp09', 'vp08', 'av01', 'theora'):
+        return False
+    return not video_has_alpha(filepath)
+
+
+# Pixel formats with an alpha channel (ProRes 4444, PNG-in-mov, QuickTime Animation…).
+_ALPHA_PIX_FMTS = ('yuva', 'rgba', 'argb', 'bgra', 'abgr', 'gbrap', 'ya8', 'ya16')
+
+
+def video_has_alpha(filepath: str) -> bool:
+    """True when the video has a see-through background (an alpha channel).
+
+    Three ways it shows up:
+    - VP8/VP9 WebM: the stream is tagged alpha_mode=1 (alpha rides in a side channel,
+      so the pixel format still reads yuv420p);
+    - HEVC .mov (Apple's "HEVC with Alpha"): an alpha layer declared in the hvcC box,
+      which ffprobe doesn't report — see hevc_mov_has_alpha();
+    - everything else: a pixel format with an alpha channel.
+    """
+    ffprobe = get_ffprobe_bin()
+    try:
+        result = subprocess.run(
+            [ffprobe, '-v', 'error', '-select_streams', 'v:0',
+             '-show_entries', 'stream=codec_name,pix_fmt:stream_tags=alpha_mode',
+             '-of', 'json', filepath],
+            capture_output=True, text=True, timeout=30
+        )
+        streams = json.loads(result.stdout or '{}').get('streams') or []
+    except Exception:
+        return False
+    if not streams:
+        return False
+    stream = streams[0]
+    if str((stream.get('tags') or {}).get('alpha_mode', '')).strip() == '1':
+        return _webm_alpha_is_used(filepath, stream.get('codec_name'))
+    if (stream.get('pix_fmt') or '').startswith(_ALPHA_PIX_FMTS):
+        return True
+    if stream.get('codec_name') == 'hevc':
+        return hevc_mov_has_alpha(filepath)
+    return False
+
+
+def _webm_alpha_is_used(filepath: str, codec: Optional[str]) -> bool:
+    """True when a WebM's alpha channel is see-through somewhere in its first seconds.
+
+    Some sites (Apple included) encode every WebM with an alpha channel, even
+    ones that are solid all the way through. Those should still be converted,
+    so the alpha is decoded and checked rather than trusted. ffmpeg's built-in
+    VP9 decoder drops alpha, hence libvpx. If that can't run, trust the tag.
+    """
+    decoder = 'libvpx' if codec == 'vp8' else 'libvpx-vp9'
+    try:
+        result = subprocess.run(
+            [get_ffmpeg_bin(), '-v', 'error', '-c:v', decoder, '-t', '5', '-i', filepath,
+             '-an', '-vf', 'alphaextract,signalstats,metadata=mode=print:file=-',
+             '-f', 'null', '-'],
+            capture_output=True, text=True, timeout=60
+        )
+    except Exception:
+        return True
+    minimums = [float(line.split('=', 1)[1]) for line in result.stdout.splitlines()
+                if line.startswith('lavfi.signalstats.YMIN=')]
+    if result.returncode != 0 or not minimums:
+        return True
+    return min(minimums) < 250        # 255 is fully opaque; leave room for encoder noise
+
+
+def _moov_box(f) -> Optional[bytes]:
+    """The contents of an mp4/mov file's moov box (its index), or None."""
+    f.seek(0, os.SEEK_END)
+    file_size = f.tell()
+    offset = 0
+    while offset + 8 <= file_size:
+        f.seek(offset)
+        header = f.read(8)
+        size = int.from_bytes(header[:4], 'big')
+        box_type = header[4:8]
+        header_len = 8
+        if size == 1:                       # 64-bit size follows
+            size = int.from_bytes(f.read(8), 'big')
+            header_len = 16
+        elif size == 0:                     # runs to the end of the file
+            size = file_size - offset
+        if size < header_len:
+            return None
+        if box_type == b'moov':
+            if size > 64 * 1024 * 1024:     # no real index is this big
+                return None
+            return f.read(size - header_len)
+        offset += size
+    return None
+
+
+def hevc_mov_has_alpha(filepath: str) -> bool:
+    """True for HEVC with Alpha, as Apple's encoders write it.
+
+    The hvcC box (decoder setup) of such a file holds an alpha_channel_info SEI
+    message (payload type 165) and a VPS with a second layer — the alpha.
+    Either one is enough.
+    """
+    try:
+        with open(filepath, 'rb') as f:
+            moov = _moov_box(f)
+    except OSError:
+        return False
+    if not moov:
+        return False
+    start = moov.find(b'hvcC')
+    if start < 0:
+        return False
+    data = moov[start + 4:]
+    try:
+        pos = 22                            # skip the fixed part of the record
+        num_arrays = data[pos]
+        pos += 1
+        for _ in range(num_arrays):
+            nal_type = data[pos] & 0x3F
+            count = int.from_bytes(data[pos + 1:pos + 3], 'big')
+            pos += 3
+            for _ in range(count):
+                length = int.from_bytes(data[pos:pos + 2], 'big')
+                nal = data[pos + 2:pos + 2 + length]
+                pos += 2 + length
+                if nal_type == 32 and len(nal) >= 4:          # VPS
+                    max_layers_minus1 = ((nal[2] & 0x03) << 4) | (nal[3] >> 4)
+                    if max_layers_minus1 > 0:
+                        return True
+                if nal_type in (39, 40) and len(nal) >= 3 and nal[2] == 165:   # SEI
+                    return True
+    except IndexError:
+        return False
+    return False
 
 
 class VideoEncoder:
