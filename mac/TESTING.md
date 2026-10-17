@@ -50,6 +50,6 @@ Clicked through in the running app, the self-contained Release build with its bu
 ## Known gaps (not bugs)
 
 - The extension's wake link opens the old app while it's installed in /Applications.
-- Bundle id is still `com.dlwithit.prototype`; not signed or notarized yet (needs Apple enrollment).
+- Not signed or notarized yet (needs Apple enrollment). The bundle id is now `com.dlwithit.app` (was `com.dlwithit.prototype` until 2026-10-17), so window size, view mode, sort and similar app prefs start fresh once; download settings live in the engine and carry over.
 - WebM files show a placeholder thumbnail (Quick Look can't preview WebM) until converted.
 - The extension's DOM scan guesses thumbnails from nearby images, so a page's unrelated picture can appear (seen on w3schools). Extension behaviour, unchanged.
