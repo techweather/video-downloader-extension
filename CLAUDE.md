@@ -124,7 +124,7 @@ Before this goes to a wider group of people, these must be true:
 
 ```bash
 cd /Users/seanstarkweather/01_Projects/dlwithit
-.venv/bin/pytest tests/test_api.py tests/test_classify.py tests/test_download_payload.py tests/test_encoder_logic.py tests/test_format_selection.py tests/test_sidecar_paths.py tests/test_events.py tests/test_routing.py tests/test_library.py tests/test_engine.py tests/test_app_api.py tests/test_error_summary.py tests/test_pick_enrich.py tests/test_apple_media.py tests/test_media_check.py tests/test_alpha.py tests/test_image_picker_srcset.py -v
+.venv/bin/pytest tests/test_api.py tests/test_classify.py tests/test_download_payload.py tests/test_encoder_logic.py tests/test_format_selection.py tests/test_sidecar_paths.py tests/test_events.py tests/test_routing.py tests/test_library.py tests/test_engine.py tests/test_app_api.py tests/test_error_summary.py tests/test_pick_enrich.py tests/test_apple_media.py tests/test_media_check.py tests/test_alpha.py tests/test_image_picker_srcset.py tests/test_flat_probe.py -v
 ```
 
 Runs in ~2 seconds, no downloads, no browser, no app running needed.
@@ -147,6 +147,7 @@ Runs in ~2 seconds, no downloads, no browser, no app running needed.
 | `tests/test_apple_media.py` | Apple product-page animations: folder → best file (recorded CDN answers), routing, `apple-media.js` in node |
 | `tests/test_media_check.py` | Direct downloads refuse web pages and cut-off files |
 | `tests/test_alpha.py` | See-through video detection (VP9/VP8 alpha, HEVC with Alpha, ProRes 4444) — never auto-converted |
+| `tests/test_flat_probe.py` | Quick flat probe opens the picker on embed-heavy pages; falls back to a full read when titles can't be filled in |
 | `tests/test_image_picker_srcset.py` | Picker takes the biggest `<picture>`/srcset copy (helpers run in node); Apple stills upgraded to `_2x` |
 
 The whole fast suite (everything except `test_real_downloads.py`, ~380 tests, ~4 s): `.venv/bin/pytest -q -m "not slow" --ignore=tests/test_real_downloads.py`
@@ -271,7 +272,7 @@ The duplicated playlist-detection block is now one `_emit_playlist_if_multi()` m
 
 **Verified**: on the real repro page, one pass → picker with 12 videos and correct titles. **Not yet verified**: the end-to-end wall-clock improvement through the extension in a browser, and the "Reading video N of M" label appearing in the UI.
 
-**Still open (deliberate)**: `extract_flat='in_playlist'` returns the same 12 entries in **0.4s vs 8.8s**, but with `title: None`. Worth doing if the wait is still too long — it needs titles backfilled from the extension's iframe scrape, or the picker shown immediately and titles filled in as they resolve.
+**Flat probe (done 2026-10-17, branch `claude/competent-yonath-af8118`, unmerged):** the probe now asks yt-dlp for `extract_flat='in_playlist'` and, when every entry is Vimeo/YouTube (or already titled), opens the picker straight from that list; the engine's oEmbed lookup (`core/pick_enrich.py`) fills in titles and thumbnails right after. `DownloadWorker._probe()` / `flat_entries_usable()` in `core/downloader.py`. Lists oEmbed can't improve (Wistia etc.) and single embeds are read fully as before; a plain video link is still read once (`extract_flat` doesn't touch it). YouTube's oEmbed rejects `/embed/` links, so `oembed_lookup_url()` swaps in the watch link. Measured through the engine on a local page with 12 real Vimeo embeds (andrewsiner.com was redesigned in the meantime and no longer has any): picker **8.3 s cold / 3.4 s warm → 0.5 s cold / 0.08 s warm**, all 12 titles and thumbnails in by 0.7 s. A picked entry still downloads at full quality (1440×1080 h.264 + AAC, Vimeo's top rendition). 17 new tests in `tests/test_flat_probe.py` + `tests/test_pick_enrich.py`.
 
 **Follow-up fix (2026-08-10, `skip-data-uris`)**: page themes ship a tiny base64 placeholder as a `<video src>` to prime the player (andrewsiner.com's is 2×2, 4 frames). The scan treated it as real, so running Video Download near the top of the page gave a bogus "Found 1 video" picker, and downloading it crashed with `InvalidSchema` — `requests` has no adapter for `data:`. `resolveUrl()` now returns null for `data:` in both extensions (covers every scan pass at once); `core/media_list.is_fetchable_media_url()` is the app-side backstop. Confirmed fixed live. Unit suite at 200.
 

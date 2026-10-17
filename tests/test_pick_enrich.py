@@ -7,7 +7,7 @@ import threading
 
 from core.engine import Engine
 from core.library import Library
-from core.pick_enrich import enrich_video, fetch_oembed, oembed_endpoint
+from core.pick_enrich import enrich_video, fetch_oembed, oembed_endpoint, oembed_lookup_url
 from tests.test_engine import MemorySettings
 
 
@@ -44,6 +44,15 @@ class TestOembed:
         assert fetch_oembed('https://player.vimeo.com/video/1', get=get) == {
             'title': 'Petbarn POV', 'thumbnail': 'https://i.vimeocdn.com/t.jpg', 'duration': 30}
         assert get.calls[0][1]['url'] == 'https://player.vimeo.com/video/1'
+
+    def test_youtube_embeds_are_looked_up_by_watch_link(self):
+        """YouTube's oEmbed answers 404 for /embed/ links, which is what page iframes give."""
+        assert oembed_lookup_url('https://www.youtube.com/embed/dQw4w9WgXcQ?rel=0') == \
+            'https://www.youtube.com/watch?v=dQw4w9WgXcQ'
+        assert oembed_lookup_url('https://player.vimeo.com/video/1?h=x') == 'https://player.vimeo.com/video/1?h=x'
+        get = fake_get(data={'title': 'Never Gonna'})
+        fetch_oembed('https://www.youtube.com/embed/dQw4w9WgXcQ', get=get)
+        assert get.calls[0][1]['url'] == 'https://www.youtube.com/watch?v=dQw4w9WgXcQ'
 
     def test_fetch_gives_up_quietly(self):
         assert fetch_oembed('https://vimeo.com/1', get=fake_get(status=404)) is None
