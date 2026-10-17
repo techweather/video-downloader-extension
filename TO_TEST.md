@@ -34,6 +34,7 @@ Chrome: `chrome://extensions` › reload **dlwithit Connector**. Firefox: `about
 - [ ] **Apple animations:** Video Download on apple.com/macbook-neo, /imac, /mac-mini and /mac-studio. The animations land in the app and play. See-through ones stay `.mov`/`.webm` and don't convert to MP4.
 - [ ] **Apple stills:** Pick Images on an apple.com product photo. The file is the large `_2x` version, not a small one.
 - [ ] **Keyboard shortcuts:** Chrome ⌘⌃1 / ⌘⌃2, Firefox ⌘F1 / ⌘F2.
+- [ ] **Many embeds:** Video Download on a page with lots of Vimeo or YouTube players. The picker appears within ~2 s and titles and thumbnails fill in right after. (andrewsiner.com was redesigned and no longer has Vimeo embeds, so use another portfolio page.)
 
 ## Done
 
