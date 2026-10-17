@@ -177,6 +177,10 @@ function domScanForVideos() {
   const processedUrls = new Set();
   let blobVideoCount = 0;
 
+  // 0. Apple product-page animations (apple-media.js, injected just before this scan)
+  const apple = window.__dlwithitScanAppleMedia ? window.__dlwithitScanAppleMedia() : { videos: [], folders: [] };
+  apple.videos.forEach(video => { processedUrls.add(video.url); videos.push(video); });
+
   function resolveUrl(url) {
     if (!url) return null;
     // Themes ship a tiny base64 placeholder as a <video src> to prime the
@@ -400,7 +404,11 @@ function domScanForVideos() {
     }
   });
 
-  return { videos, blobVideoCount, pageTitle: document.title, pageUrl: window.location.href };
+  // A file playing out of an Apple animation folder is just one screen size of
+  // that animation's entry — the app picks the biggest.
+  const kept = videos.filter(v => v.type === 'apple-anim' || !apple.folders.some(f => v.url.startsWith(f)));
+
+  return { videos: kept, blobVideoCount, pageTitle: document.title, pageUrl: window.location.href };
 }
 
 // Combined video download:
@@ -551,6 +559,7 @@ async function runCombinedVideoDownload(tab) {
     setScanBanner(tab.id, 'Scanning page for videos…');
     let scanResults;
     try {
+      await chrome.scripting.executeScript({ target: { tabId: tab.id }, files: ['apple-media.js'] });
       scanResults = await chrome.scripting.executeScript({
         target: { tabId: tab.id },
         func: domScanForVideos

@@ -314,6 +314,7 @@ class Engine:
             'detectedVideos': data.get('detectedVideos'),
             'skip_playlist_detection': data.get('skip_playlist_detection', False),
             'playlist_index': data.get('playlist_index'),
+            'apple_basepath': data.get('apple_basepath'),
         }
         item.update(self._download_options())
 
@@ -436,6 +437,10 @@ class Engine:
     def _on_status(self, job_id, status):
         if status.startswith('thumbnail:'):
             self._update(job_id, thumbnail=status[len('thumbnail:'):])
+        elif status.startswith('resolved_url:'):
+            # The file found behind an Apple animation folder: keep it, so the
+            # library (and Retry from it) points at the real file.
+            self._update(job_id, url=status[len('resolved_url:'):])
         elif status.startswith('title:'):
             self._update(job_id, title=status[len('title:'):])
         elif status == 'downloading':

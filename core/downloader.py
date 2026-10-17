@@ -20,6 +20,7 @@ os.environ.setdefault('YTDLP_NO_PLUGINS', '1')
 from .events import Signal, WorkerThread
 import yt_dlp
 
+from . import apple_media
 from .encoder import VideoEncoder, file_needs_encoding, get_ffmpeg_dir
 from .metadata import embed_image_metadata, embed_video_metadata
 
@@ -813,9 +814,17 @@ class DownloadWorker(WorkerThread):
                     else:
                         video_dir = Path(save_path)
                     video_dir.mkdir(parents=True, exist_ok=True)
-                    
+
+                    file_url = download['url']
+                    if download.get('apple_basepath'):
+                        # An Apple product-page animation: find the real file in its folder.
+                        self.status_update.emit(self.current_download_id, 'finding the best version...')
+                        file_url, _ = apple_media.resolve(download['apple_basepath'], referrer)
+                        self.status_update.emit(self.current_download_id, f'resolved_url:{file_url}')
+                        self.status_update.emit(self.current_download_id, 'downloading')
+
                     # Generate filename - sanitize title for filesystem safety
-                    safe_title, ext = direct_video_filename(title, download['url'])
+                    safe_title, ext = direct_video_filename(title, file_url)
                     filename = f"{safe_title}{ext}"
                     
                     filepath = video_dir / filename
@@ -845,7 +854,7 @@ class DownloadWorker(WorkerThread):
                         origin = urlparse(referrer)
                         headers['Origin'] = f"{origin.scheme}://{origin.netloc}"
                     
-                    response = requests.get(download['url'], stream=True, headers=headers, timeout=30)
+                    response = requests.get(file_url, stream=True, headers=headers, timeout=30)
                     response.raise_for_status()
                     
                     total_size = int(response.headers.get('content-length', 0))
