@@ -20,7 +20,6 @@ Last updated: 2026-10-17.
 - [ ] **Gallery** (⌘2): ⌘-click, ⇧-click, drag a box on empty space, ⌘A, Esc. Right-click a card that isn't selected: it gets selected.
 - [ ] Select a few items, press ⌘1 and then ⌘2: the selection stays.
 - [ ] **YouTube:** paste a YouTube link (⌘V). It downloads in full quality. Tell Claude when it's done, and Claude will check the log for the "no JS runtime" warning.
-- [ ] **Vimeo:** Video Download on a portfolio page with Vimeo embeds (e.g. andrewsiner.com). The picker appears, then the files download.
 - [ ] **Open at login** *(optional)*: turn it on in Settings, log out and back in. The app starts in the menu bar with no window.
 
 ## 3. Extensions (reload them first)
@@ -34,7 +33,7 @@ Chrome: `chrome://extensions` › reload **dlwithit Connector**. Firefox: `about
 - [ ] **Apple animations:** Video Download on apple.com/macbook-neo, /imac, /mac-mini and /mac-studio. The animations land in the app and play. See-through ones stay `.mov`/`.webm` and don't convert to MP4.
 - [ ] **Apple stills:** Pick Images on an apple.com product photo. The file is the large `_2x` version, not a small one.
 - [ ] **Keyboard shortcuts:** Chrome ⌘⌃1 / ⌘⌃2, Firefox ⌘F1 / ⌘F2.
-- [ ] **Many embeds:** Video Download on a page with lots of Vimeo or YouTube players. The picker appears within ~2 s and titles and thumbnails fill in right after. (andrewsiner.com was redesigned and no longer has Vimeo embeds, so use another portfolio page.)
+- [ ] **Many embeds (Vimeo):** Video Download on a portfolio page with several Vimeo players. The picker appears within ~2 s, titles and thumbnails fill in, and the chosen videos download. (andrewsiner.com no longer has Vimeo embeds; use another portfolio.)
 
 ## Done
 
