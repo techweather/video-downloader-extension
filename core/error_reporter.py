@@ -48,6 +48,9 @@ FRIENDLY_ERRORS = (
     ('HTTP Error 429', "The site is rate-limiting downloads — try again later"),
     ('Read timed out', "The site stopped responding — try again"),
     ('No space left on device', "Your disk is full"),
+    ('The site sent a web page instead of the video file', "The site sent a web page, not the video — reload and retry"),
+    ('The download stopped early', "The download stopped early — try again"),
+    ('IncompleteRead', "The download stopped early — try again"),
     ("Couldn't find the video file for this animation", "Couldn't find this animation's file — reload the page and retry"),
 )
 

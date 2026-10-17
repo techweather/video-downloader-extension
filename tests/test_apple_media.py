@@ -215,8 +215,9 @@ class FakeDownload:
 
     def __init__(self, body, headers=None, status=200):
         self.body, self.status_code = body, status
-        self.headers = headers if headers is not None else {'Content-Length': str(len(body)),
-                                                             'Content-Type': 'video/quicktime'}
+        if headers is None:
+            headers = {'Content-Length': str(len(body)), 'Content-Type': 'video/quicktime'}
+        self.headers = requests.structures.CaseInsensitiveDict(headers)
 
     def raise_for_status(self):
         if self.status_code >= 400:
@@ -227,7 +228,7 @@ class FakeDownload:
             yield self.body[i:i + chunk_size]
 
 
-def run_worker(item, monkeypatch, response, resolved=None):
+def run_worker(item, monkeypatch, response, resolved=None, headers_seen=None):
     """Run one direct-video item through DownloadWorker.run() with the network faked."""
     from core import downloader
     from core.downloader import DownloadWorker
@@ -236,6 +237,8 @@ def run_worker(item, monkeypatch, response, resolved=None):
 
     def fake_get(url, **kwargs):
         fetched.append(url)
+        if headers_seen is not None:
+            headers_seen.append(kwargs.get('headers', {}))
         return response
 
     monkeypatch.setattr(downloader.requests, 'get', fake_get)
