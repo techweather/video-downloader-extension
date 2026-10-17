@@ -391,6 +391,13 @@ class DownloadWorker(WorkerThread):
     def download_image(self, url, download_id, save_path, organize_by_platform, referrer=None):
         """Download an image file"""
         try:
+            # Apple product pages: the biggest copy, not the size this window showed.
+            best = apple_media.largest_image(url, referrer)
+            if best != url:
+                url = best
+                self.status_update.emit(download_id, f'resolved_url:{url}')
+                self.status_update.emit(download_id, f'title:{os.path.basename(urlparse(url).path)}')
+
             # Create images directory if organizing by platform
             if organize_by_platform:
                 image_dir = Path(save_path) / 'images'

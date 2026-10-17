@@ -109,6 +109,93 @@
 
   // ---- finding images ------------------------------------------------------
 
+  // ---- srcset helpers (tests/test_image_picker_srcset.py runs these in node) ----
+
+  // [url, descriptor] pairs of a srcset, split the way browsers do: a URL is a
+  // run of non-spaces (it may contain commas, e.g. Cloudinary's w_400,h_300),
+  // and a comma ends the entry.
+  function parseSrcset(srcset) {
+    const entries = [];
+    const text = srcset || '';
+    let i = 0;
+    while (i < text.length) {
+      while (i < text.length && /[\s,]/.test(text[i])) i++;
+      let j = i;
+      while (j < text.length && !/\s/.test(text[j])) j++;
+      let url = text.slice(i, j);
+      const endedByComma = /,$/.test(url);
+      url = url.replace(/,+$/, '');
+      i = j;
+      let descriptor = '';
+      if (!endedByComma) {
+        while (i < text.length && text[i] !== ',') descriptor += text[i++];
+      }
+      if (url) entries.push([url, descriptor.trim()]);
+      i++;
+    }
+    return entries;
+  }
+
+  // The biggest candidate in a srcset: highest "2x"/"1200w" descriptor wins.
+  // Returns { url, scale } or null. Placeholder data: entries are skipped.
+  function largestFromSrcset(srcset) {
+    let best = null;
+    for (const [entryUrl, descriptor] of parseSrcset(srcset)) {
+      if (/^data:/i.test(entryUrl)) continue;
+      let scale = 1;
+      if (/^[\d.]+x$/i.test(descriptor)) scale = parseFloat(descriptor);
+      else if (/^\d+w$/i.test(descriptor)) scale = parseInt(descriptor, 10) / 1000;
+      if (!best || scale > best.scale) best = { url: entryUrl, scale };
+    }
+    return best;
+  }
+
+  // Widest screen a <source media="…"> applies to; no max-width means any width.
+  function mediaMaxWidth(media) {
+    const match = (media || '').match(/max-width:\s*([\d.]+)px/i);
+    return match ? parseFloat(match[1]) : Infinity;
+  }
+
+  // Pages often have the same picture as AVIF/WebP and JPEG/PNG. Keep the one
+  // that opens everywhere (Photoshop, Premiere, older macOS).
+  function typeRank(source) {
+    const type = (source.getAttribute('type') || '').toLowerCase();
+    return /avif|webp|jxl/.test(type) ? 0 : 1;
+  }
+
+  // The highest-resolution file a <picture> offers — not the one the browser
+  // picked for this window — from the source for the widest screen at the
+  // highest density. Falls back to the <img>'s own src.
+  function bestPictureSource(img) {
+    const picture = img.parentElement;
+    let best = null;
+    for (const source of picture.querySelectorAll('source')) {
+      if (source.hasAttribute('data-empty')) continue;
+      const candidate = largestFromSrcset(source.getAttribute('srcset'));
+      if (!candidate) continue;
+      const rank = [mediaMaxWidth(source.getAttribute('media')), candidate.scale, typeRank(source)];
+      if (!best || rank[0] > best.rank[0] ||
+          (rank[0] === best.rank[0] && (rank[1] > best.rank[1] ||
+            (rank[1] === best.rank[1] && rank[2] > best.rank[2])))) {
+        best = { url: candidate.url, rank };
+      }
+    }
+    if (best) return best.url;
+    const own = largestFromSrcset(img.getAttribute('srcset'));
+    if (own) return own.url;
+    // Lazy pictures (Apple's) keep a placeholder as the only source until they
+    // scroll into view, but the <img> already names the real file.
+    const src = img.getAttribute('src');
+    return src && !/^data:/i.test(src) ? src : null;
+  }
+
+  // ---- end srcset helpers ----
+
+  // Resolve a URL from the page against the page, so relative paths download.
+  function absolute(url) {
+    try { return new URL(url, document.baseURI).href; } catch (e) { return url; }
+  }
+
   // Extract image URL from element
   function extractImageURL(element) {
     if (!element) return null;
@@ -128,32 +215,16 @@
         url = element.dataset.fullsize;
       } else if (element.dataset.highres) {
         url = element.dataset.highres;
+      } else if (element.parentElement && element.parentElement.tagName === 'PICTURE' &&
+                 bestPictureSource(element)) {
+        // The biggest file the <picture> offers, not the one sized for this window
+        url = absolute(bestPictureSource(element));
+      } else if (largestFromSrcset(element.getAttribute('srcset'))) {
+        // The biggest srcset entry, not the one the browser picked for this screen
+        url = absolute(largestFromSrcset(element.getAttribute('srcset')).url);
       } else if (element.currentSrc && element.currentSrc !== element.src && element.currentSrc.includes('.')) {
-        // currentSrc shows what the browser actually displays (could be from srcset)
+        // currentSrc shows what the browser actually displays
         url = element.currentSrc;
-      } else if (element.srcset) {
-        // Parse srcset to get the largest image
-        const srcsetEntries = element.srcset.split(',').map(s => s.trim());
-        let largestUrl = null;
-        let largestWidth = 0;
-
-        for (const entry of srcsetEntries) {
-          const [entryUrl, descriptor] = entry.split(' ');
-          if (descriptor && descriptor.endsWith('w')) {
-            const width = parseInt(descriptor);
-            if (width > largestWidth) {
-              largestWidth = width;
-              largestUrl = entryUrl;
-            }
-          }
-        }
-
-        if (largestUrl) {
-          url = largestUrl;
-        } else if (srcsetEntries.length > 0) {
-          // If no width descriptors, take the first one
-          url = srcsetEntries[0].split(' ')[0];
-        }
       } else if (element.src && !element.src.endsWith('/') && element.src.includes('.')) {
         // Only use src if it looks like an actual image URL
         url = element.src;

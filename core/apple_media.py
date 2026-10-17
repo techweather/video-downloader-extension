@@ -16,6 +16,7 @@ product, year or uuid: Apple changes those every product cycle, but the file
 naming has stayed the same.
 """
 
+import re
 from concurrent.futures import ThreadPoolExecutor
 from urllib.parse import urljoin, urlparse
 
@@ -132,3 +133,39 @@ def resolve(basepath, page_url=None, probe=probe_size):
             "Couldn't find the video file for this animation. Apple may have moved "
             f"it since the page loaded — reload the page and try again. ({folder})")
     return best
+
+
+# Apple's still images: name_large.jpg, name_large_2x.jpg, name_small_2x.png, …
+_IMAGE_NAME = re.compile(
+    r'^(?P<stem>.+_)(?P<size>xsmall|small|medium|large|xlarge)(?:_2x)?\.(?P<ext>jpe?g|png|webp|avif)$',
+    re.IGNORECASE)
+
+
+def _is_apple_host(url):
+    host = (urlparse(url or '').hostname or '').lower()
+    return host == 'apple.com' or host.endswith('.apple.com')
+
+
+def largest_image(url, referer=None, probe=probe_size):
+    """The biggest copy Apple has of a still image, in the same format.
+
+    The picker can only see the size the page chose for this window (often
+    _medium_2x, or _large while the picture is still a lazy placeholder).
+    Every size and density is tried and the biggest file kept. Anything
+    that isn't an Apple image name comes back unchanged.
+    """
+    if not _is_apple_host(url):
+        return url
+    parts = urlparse(url)
+    folder, _, name = parts.path.rpartition('/')
+    match = _IMAGE_NAME.match(name)
+    if not match:
+        return url
+    prefix = f'{parts.scheme}://{parts.netloc}{folder}/{match["stem"]}'
+    candidates = [f'{prefix}{size}{density}.{match["ext"]}'
+                  for size in VIEWPORTS for density in DENSITIES]
+    with requests.Session() as session, ThreadPoolExecutor(PROBE_WORKERS) as pool:
+        sizes = dict(zip(candidates, pool.map(
+            lambda u: probe(u, session=session, referer=referer), candidates)))
+    found = {u: s for u, s in sizes.items() if s}
+    return max(found, key=found.get) if found else url
