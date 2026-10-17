@@ -9,6 +9,8 @@ extraction. The engine calls enrich_videos() in the background after the
 picker opens and updates it as answers come in.
 """
 
+import re
+
 import requests
 
 OEMBED_ENDPOINTS = (
@@ -25,13 +27,25 @@ def oembed_endpoint(url):
     return None
 
 
+# YouTube's oEmbed answers 404 for player links (youtube.com/embed/ID), which
+# is what a page's iframes give us, but knows the same video by its watch link.
+_YOUTUBE_EMBED_RE = re.compile(r'youtube\.com/embed/([\w-]{11})')
+
+
+def oembed_lookup_url(url):
+    """The form of `url` the oEmbed endpoint accepts (YouTube embeds become watch links)."""
+    match = _YOUTUBE_EMBED_RE.search(url or '')
+    return f'https://www.youtube.com/watch?v={match.group(1)}' if match else url
+
+
 def fetch_oembed(url, get=requests.get, timeout=5):
     """{'title', 'thumbnail', 'duration'} for a Vimeo/YouTube link, or None if unavailable."""
     endpoint = oembed_endpoint(url)
     if not endpoint:
         return None
     try:
-        response = get(endpoint, params={'url': url, 'format': 'json'}, timeout=timeout)
+        response = get(endpoint, params={'url': oembed_lookup_url(url), 'format': 'json'},
+                       timeout=timeout)
         if response.status_code != 200:
             return None
         data = response.json()
