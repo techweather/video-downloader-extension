@@ -151,6 +151,10 @@ Runs in ~2 seconds, no downloads, no browser, no app running needed.
 
 The whole fast suite (everything except `test_real_downloads.py`, ~380 tests, ~4 s): `.venv/bin/pytest -q -m "not slow" --ignore=tests/test_real_downloads.py`
 
+### Sean's running test list — [TO_TEST.md](TO_TEST.md)
+
+One checklist of everything Claude couldn't verify itself (installer, real extension clicks, menus, notifications). When work lands that needs Sean's hands, add a short, executable line there; when he confirms an item, remove it. Keep it a task list, not a report.
+
 ### Tier 2 — manual smoke test (not yet built)
 
 Planned: a short checklist using a fixed tab set of hard cases — Instagram carousels, Vimeo-heavy portfolio pages, Mux embeds. Replaces the existing exhaustive `TESTING_CHECKLIST.md`. See Obsidian `01_Projects/dlwithit/Test Setup` for full context.
