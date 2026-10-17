@@ -124,7 +124,7 @@ Before this goes to a wider group of people, these must be true:
 
 ```bash
 cd /Users/seanstarkweather/01_Projects/dlwithit
-.venv/bin/pytest tests/test_api.py tests/test_classify.py tests/test_download_payload.py tests/test_encoder_logic.py tests/test_format_selection.py tests/test_sidecar_paths.py tests/test_events.py tests/test_routing.py tests/test_library.py tests/test_engine.py tests/test_app_api.py tests/test_error_summary.py tests/test_pick_enrich.py -v
+.venv/bin/pytest tests/test_api.py tests/test_classify.py tests/test_download_payload.py tests/test_encoder_logic.py tests/test_format_selection.py tests/test_sidecar_paths.py tests/test_events.py tests/test_routing.py tests/test_library.py tests/test_engine.py tests/test_app_api.py tests/test_error_summary.py tests/test_pick_enrich.py tests/test_apple_media.py tests/test_media_check.py tests/test_alpha.py tests/test_image_picker_srcset.py -v
 ```
 
 Runs in ~2 seconds, no downloads, no browser, no app running needed.
@@ -144,6 +144,10 @@ Runs in ~2 seconds, no downloads, no browser, no app running needed.
 | `tests/test_app_api.py` | `/app/` endpoints: token, no-CORS, actions, live event stream |
 | `tests/test_error_summary.py` | One-line error text shown on failed downloads |
 | `tests/test_pick_enrich.py` | Real titles/thumbnails for picker videos via oEmbed (faked, no network) |
+| `tests/test_apple_media.py` | Apple product-page animations: folder → best file (recorded CDN answers), routing, `apple-media.js` in node |
+| `tests/test_media_check.py` | Direct downloads refuse web pages and cut-off files |
+| `tests/test_alpha.py` | See-through video detection (VP9/VP8 alpha, HEVC with Alpha, ProRes 4444) — never auto-converted |
+| `tests/test_image_picker_srcset.py` | Picker takes the biggest `<picture>`/srcset copy (helpers run in node); Apple stills upgraded to `_2x` |
 
 The whole fast suite (everything except `test_real_downloads.py`, ~380 tests, ~4 s): `.venv/bin/pytest -q -m "not slow" --ignore=tests/test_real_downloads.py`
 
@@ -232,10 +236,12 @@ The goal is to make it genuinely useful and shareable — not a polished commerc
 New capability set so dlwithit can extract motion/media from Apple product "overview" pages (`macbook-neo`, `imac`, `mac-mini`, `mac-studio`, `mac/mac-does-that`) that the generic scraper misses: `blob:` video srcs, JS-constructed CDN URLs, transparent `.mov`/`.webm`, canvas image-sequence flipbooks, and HLS `.m3u8` films.
 
 Full self-contained plan (content types, recipes, task breakdown **A–F**, acceptance criteria, re-derivation commands):
-- Repo: `APPLE_EXTRACTION_PLAN.md`
+- Repo: none — the `APPLE_EXTRACTION_PLAN.md` mirror was never committed; the Obsidian copy is the only one
 - Obsidian: `01_Projects/dlwithit/Apple.com Media Extraction — Implementation Plan.md`
 
 Scope: **A/B/C/F** are the in-scope "Apple support" set for the current dev version; **D** (canvas flipbooks) and **E** (HLS discovery) are flagged stretch. Tracked in Things under 👾 dlwithit → "Apple.com marketing-page media extraction" (tag **Next**).
+
+**A/B/C/F done (2026-10-17, branch `claude/upbeat-wescoff-f44da8`, unmerged).** `extension_*/apple-media.js` (identical in both) sends each `<video>`'s animation folder; `core/apple_media.py` tries Apple's file names there with 1-byte range requests and keeps mp4 > mov > webm, biggest file. `core/media_check.py` refuses error pages and cut-off direct downloads. `file_needs_encoding()` now says no to any video with a used alpha channel (`video_has_alpha()` in `core/encoder.py`). The picker takes the biggest `<picture>`/srcset copy and the app upgrades Apple stills to their largest `_2x`. Verified live: all 26 animations on macbook-neo, imac, mac-mini, mac-studio downloaded and decode; the transparent ones stay `.mov`/`.webm` with alpha. **Not yet tried by Sean through a real extension click** (the scan was run in a browser by hand). D and E still open.
 
 ---
 

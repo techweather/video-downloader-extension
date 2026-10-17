@@ -399,6 +399,9 @@ function triggerCombinedVideoDownload(tab) {
           }, tab.id);
         } else {
           setScanBanner(tab.id, 'Scanning page for videos…');
+          // Apple product-page animations first; the scan below picks them up.
+          browser.tabs.executeScript(tab.id, { file: 'apple-media.js' }, function() {
+          if (browser.runtime.lastError) { /* the scan still runs without it */ }
           browser.tabs.executeScript(tab.id, {
             code: `
               (function() {
@@ -417,6 +420,10 @@ function triggerCombinedVideoDownload(tab) {
                 try {
                   const videos = [];
                   const processedUrls = new Set();
+
+                  // 0. Apple product-page animations (apple-media.js, injected just before this scan)
+                  const apple = window.__dlwithitScanAppleMedia ? window.__dlwithitScanAppleMedia() : { videos: [], folders: [] };
+                  apple.videos.forEach(video => { processedUrls.add(video.url); videos.push(video); });
 
                   function resolveUrl(url) {
                     if (!url) return null;
@@ -686,6 +693,12 @@ function triggerCombinedVideoDownload(tab) {
                     }
                   });
 
+                  // A file playing out of an Apple animation folder is just one screen size of
+                  // that animation's entry — the app picks the biggest.
+                  for (let i = videos.length - 1; i >= 0; i--) {
+                    if (videos[i].type !== 'apple-anim' && apple.folders.some(f => videos[i].url.startsWith(f))) videos.splice(i, 1);
+                  }
+
                   if (videos.length === 0) {
                     // Drop the scanning banner before showing the message.
                     dlwithitPageUI({ banner: null, toast: dlwithitNoVideosToast(blobVideoCount) });
@@ -704,6 +717,7 @@ function triggerCombinedVideoDownload(tab) {
             if (browser.runtime.lastError) {
               console.error('Script injection error:', browser.runtime.lastError);
             }
+          });
           });
         }
       })

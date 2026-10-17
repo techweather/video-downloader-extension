@@ -20,6 +20,8 @@ os.environ.setdefault('YTDLP_NO_PLUGINS', '1')
 from .events import Signal, WorkerThread
 import yt_dlp
 
+from . import apple_media
+from .media_check import BadDownload, check_download, is_web_page_type
 from .encoder import VideoEncoder, file_needs_encoding, get_ffmpeg_dir
 from .metadata import embed_image_metadata, embed_video_metadata
 
@@ -389,6 +391,13 @@ class DownloadWorker(WorkerThread):
     def download_image(self, url, download_id, save_path, organize_by_platform, referrer=None):
         """Download an image file"""
         try:
+            # Apple product pages: the biggest copy, not the size this window showed.
+            best = apple_media.largest_image(url, referrer)
+            if best != url:
+                url = best
+                self.status_update.emit(download_id, f'resolved_url:{url}')
+                self.status_update.emit(download_id, f'title:{os.path.basename(urlparse(url).path)}')
+
             # Create images directory if organizing by platform
             if organize_by_platform:
                 image_dir = Path(save_path) / 'images'
@@ -813,9 +822,17 @@ class DownloadWorker(WorkerThread):
                     else:
                         video_dir = Path(save_path)
                     video_dir.mkdir(parents=True, exist_ok=True)
-                    
+
+                    file_url = download['url']
+                    if download.get('apple_basepath'):
+                        # An Apple product-page animation: find the real file in its folder.
+                        self.status_update.emit(self.current_download_id, 'finding the best version...')
+                        file_url, _ = apple_media.resolve(download['apple_basepath'], referrer)
+                        self.status_update.emit(self.current_download_id, f'resolved_url:{file_url}')
+                        self.status_update.emit(self.current_download_id, 'downloading')
+
                     # Generate filename - sanitize title for filesystem safety
-                    safe_title, ext = direct_video_filename(title, download['url'])
+                    safe_title, ext = direct_video_filename(title, file_url)
                     filename = f"{safe_title}{ext}"
                     
                     filepath = video_dir / filename
@@ -836,7 +853,8 @@ class DownloadWorker(WorkerThread):
                         'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36',
                         'Accept': 'video/*,*/*;q=0.8',
                         'Accept-Language': 'en-US,en;q=0.9',
-                        'Accept-Encoding': 'gzip, deflate, br',
+                        # Uncompressed, so the bytes received can be checked against Content-Length.
+                        'Accept-Encoding': 'identity',
                         'Cache-Control': 'no-cache',
                     }
                     
@@ -845,29 +863,41 @@ class DownloadWorker(WorkerThread):
                         origin = urlparse(referrer)
                         headers['Origin'] = f"{origin.scheme}://{origin.netloc}"
                     
-                    response = requests.get(download['url'], stream=True, headers=headers, timeout=30)
+                    response = requests.get(file_url, stream=True, headers=headers, timeout=30)
                     response.raise_for_status()
+                    if is_web_page_type(response.headers.get('content-type')):
+                        raise BadDownload(
+                            "The site sent a web page instead of the video file. The link may "
+                            "have expired — reload the page and try again.")
                     
                     total_size = int(response.headers.get('content-length', 0))
                     downloaded = 0
                     
-                    with open(filepath, 'wb') as f:
-                        for chunk in response.iter_content(chunk_size=8192):
-                            if self.current_download_id in self.cancelled_downloads:
-                                f.close()
-                                raise Exception("Download cancelled by user")
-                                
-                            if chunk:
-                                f.write(chunk)
-                                downloaded += len(chunk)
-                                
-                                if total_size > 0:
-                                    percent = int(downloaded / total_size * 100)
-                                    self.progress_update.emit(
-                                        download['id'],
-                                        percent,
-                                        f"Downloading... {percent}%"
-                                    )
+                    try:
+                        with open(filepath, 'wb') as f:
+                            for chunk in response.iter_content(chunk_size=8192):
+                                if self.current_download_id in self.cancelled_downloads:
+                                    f.close()
+                                    raise Exception("Download cancelled by user")
+
+                                if chunk:
+                                    f.write(chunk)
+                                    downloaded += len(chunk)
+
+                                    if total_size > 0:
+                                        percent = int(downloaded / total_size * 100)
+                                        self.progress_update.emit(
+                                            download['id'],
+                                            percent,
+                                            f"Downloading... {percent}%"
+                                        )
+                        if self.current_download_id not in self.cancelled_downloads:
+                            check_download(filepath, downloaded, total_size)
+                    except Exception:
+                        # Never leave a cut-off file or a saved error page behind.
+                        filepath.unlink(missing_ok=True)
+                        self.partial_files.discard(str(filepath))
+                        raise
                     
                     # Remove from partial files once complete
                     self.partial_files.discard(str(filepath))

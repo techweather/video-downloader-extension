@@ -50,6 +50,11 @@ def route_picked_video(video, page_url, source, from_playlist=False):
         'thumbnail': video.get('thumbnail'),
     }
 
+    if video_type == 'apple-anim':
+        # An animation folder on an Apple product page; the downloader finds the file.
+        return 'direct', dict(base, title=video.get('title', 'Video'),
+                              apple_basepath=video.get('basepath') or url)
+
     is_platform = (video_type == 'hls' or url.endswith('.m3u8') or
                    any(host in url for host in PLATFORM_HOSTS))
     if is_platform:
